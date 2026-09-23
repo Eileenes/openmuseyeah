@@ -116,6 +116,7 @@ export class VoiceService {
       stt: { ...current.stt, ...patch.stt },
       tts: { ...current.tts, ...patch.tts },
       voice: { ...current.voice, ...patch.voice },
+      ui: { ...current.ui, ...patch.ui },
       id: MODEL_SETTINGS_ID,
       updatedAt: new Date().toISOString(),
     };

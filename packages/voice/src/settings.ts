@@ -26,6 +26,11 @@ const ttsSchema = z.object({
   speed: z.number().min(0.25).max(4),
   format: audioFormatSchema,
 });
+/** Interface preferences, kept with the other settings so they follow the person. */
+const uiSchema = z.object({
+  /** "auto" follows the device language until someone chooses explicitly. */
+  language: z.enum(["en", "zh", "auto"]),
+});
 const voiceSchema = z.object({
   speakReplies: z.boolean(),
   autoSend: z.boolean(),
@@ -38,6 +43,7 @@ export const modelSettingsSchema = z.object({
   stt: sttSchema,
   tts: ttsSchema,
   voice: voiceSchema,
+  ui: uiSchema,
   updatedAt: z.string(),
 });
 export type ModelSettings = z.infer<typeof modelSettingsSchema>;
@@ -48,6 +54,7 @@ export const modelSettingsInputSchema = z.object({
   stt: sttSchema.partial().optional(),
   tts: ttsSchema.partial().optional(),
   voice: voiceSchema.partial().optional(),
+  ui: uiSchema.partial().optional(),
   keys: z.record(z.string(), z.string().trim().min(8).max(500)).optional(),
 });
 export type ModelSettingsInput = z.infer<typeof modelSettingsInputSchema>;
@@ -90,6 +97,7 @@ export function defaultModelSettings(): ModelSettings {
       format: "mp3",
     },
     voice: { speakReplies: true, autoSend: true, handsFree: false },
+    ui: { language: "auto" },
     updatedAt: new Date(0).toISOString(),
   };
 }

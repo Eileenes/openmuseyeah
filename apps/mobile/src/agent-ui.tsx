@@ -1664,7 +1664,7 @@ export function NotificationsSheet() {
   );
 }
 export function AppsScreen() {
-  const { navigate, open } = useWorkspace();
+  const { navigate, open, api } = useWorkspace();
   const { t, language } = useTranslation();
   const { setLanguage } = useLanguage();
   const { data, mutate } = useAgentWorkspace();
@@ -1738,7 +1738,12 @@ export function AppsScreen() {
               key={item.id}
               small
               primary={language === item.id}
-              onPress={() => setLanguage(item.id)}
+              onPress={() => {
+                // Applies at once, and is saved so it follows the person to
+                // their other devices instead of staying on this one.
+                setLanguage(item.id);
+                void api.saveModelSettings({ ui: { language: item.id } });
+              }}
             >
               {item.label}
             </Button>
