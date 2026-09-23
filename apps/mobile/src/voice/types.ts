@@ -17,7 +17,16 @@ export interface VoiceRecorderHandle {
    * cannot slice a recording accept the option and ignore it; the clip is still
    * returned from `stop` either way.
    */
-  start: (options?: { onChunk?: (chunk: Blob) => void }) => Promise<void>;
+  start: (options?: {
+    onChunk?: (chunk: Blob) => void;
+    /**
+     * Loudness, roughly 0..1, at a steady interval. Hands-free mode needs it to
+     * decide where an utterance begins and ends. Platforms that cannot report
+     * it accept the option and never call it, which leaves the microphone open
+     * until the person stops it themselves rather than breaking.
+     */
+    onLevel?: (level: number) => void;
+  }) => Promise<void>;
   stop: () => Promise<Recording | null>;
   cancel: () => Promise<void>;
 }

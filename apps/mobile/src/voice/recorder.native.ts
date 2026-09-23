@@ -15,8 +15,10 @@ export function useVoiceRecorder(): VoiceRecorderHandle {
   const recorder = useAudioRecorder(RecordingPresets.HIGH_QUALITY);
   const [recording, setRecording] = useState(false);
 
-  // expo-audio records to a file and does not expose slices, so `onChunk` is
-  // accepted and ignored; the transcript is produced from the finished clip.
+  // expo-audio records to a file and exposes neither slices nor loudness, so
+  // `onChunk` and `onLevel` are accepted and ignored. The transcript comes from
+  // the finished clip, and hands-free simply leaves the microphone open until
+  // the person stops it rather than cutting at an utterance boundary.
   const start = useCallback(async () => {
     if (recording) return;
     const permission = await requestRecordingPermissionsAsync();

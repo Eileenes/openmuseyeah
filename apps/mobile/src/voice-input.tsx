@@ -1,8 +1,10 @@
-import { Mic, Square } from "lucide-react-native";
-import { useCallback, useRef, useState } from "react";
+import { Mic, Radio, Square } from "lucide-react-native";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { ActivityIndicator, Pressable, Text, View } from "react-native";
+import { createUtteranceDetector } from "../../../packages/voice/src/utterance";
 import { colors, s } from "./ui";
 import { useVoiceRecorder } from "./voice/recorder";
+import type { Recording } from "./voice/types";
 import { useWorkspace } from "./workspace";
 
 const message = (error: unknown) => (error instanceof Error ? error.message : String(error));
@@ -30,9 +32,60 @@ export function VoiceInput({
   const { api } = useWorkspace();
   const { recording, start, stop } = useVoiceRecorder();
   const [busy, setBusy] = useState(false);
+  const [handsFree, setHandsFree] = useState(false);
   const sessionRef = useRef<Promise<void> | null>(null);
   const streamRef = useRef<string | null>(null);
   const streamBrokenRef = useRef(false);
+  /** Bumped to abandon a listening loop when hands-free is turned off. */
+  const cycleRef = useRef(0);
+
+  /*
+   * Hands-free: keep the microphone open and let the detector decide where each
+   * utterance starts and ends, transcribing and starting again after each one.
+   * Where loudness is unavailable the loop records and simply never cuts, which
+   * is a worse experience than pressing but not a broken one.
+   */
+  useEffect(() => {
+    if (!handsFree) return;
+    cycleRef.current += 1;
+    const generation = cycleRef.current;
+    void (async () => {
+      while (generation === cycleRef.current) {
+        const detector = createUtteranceDetector();
+        const clip = await new Promise<Recording | null>((resolve) => {
+          let settled = false;
+          const settle = (value: Recording | null) => {
+            if (settled) return;
+            settled = true;
+            resolve(value);
+          };
+          void start({
+            onLevel: (level) => {
+              const event = detector.push(level);
+              if (event === "ended" || event === "too-long")
+                void stop().then(settle, () => settle(null));
+            },
+          }).catch((error) => {
+            onError(message(error));
+            settle(null);
+          });
+        });
+        if (generation !== cycleRef.current || !clip) break;
+        try {
+          const heard = await api.transcribe(clip);
+          const text = heard.text.trim();
+          if (text) onTranscript(text);
+        } catch (error) {
+          onError(message(error));
+          break;
+        }
+      }
+    })();
+    return () => {
+      cycleRef.current += 1;
+      void stop();
+    };
+  }, [handsFree, start, stop, api, onTranscript, onError]);
 
   const begin = useCallback(async () => {
     if (disabled || busy || sessionRef.current) return;
@@ -115,38 +168,56 @@ export function VoiceInput({
   }, [stop, api, onTranscript, onError]);
 
   return (
-    <View style={{ alignItems: "center", justifyContent: "center" }}>
+    <View style={{ flexDirection: "row", alignItems: "center" }}>
       <Pressable
-        accessibilityRole="button"
-        accessibilityLabel={recording ? "Release to send your voice message" : "Hold to talk"}
-        accessibilityState={{ busy, disabled: Boolean(disabled) }}
-        disabled={Boolean(disabled) || busy}
-        onPressIn={begin}
-        onPressOut={finish}
+        accessibilityRole="switch"
+        accessibilityLabel={handsFree ? "Stop listening hands-free" : "Listen hands-free"}
+        accessibilityState={{ checked: handsFree }}
+        onPress={() => setHandsFree(!handsFree)}
         style={({ pressed }) => ({
-          width: 44,
+          width: 32,
           height: 44,
-          borderRadius: 24,
           alignItems: "center",
           justifyContent: "center",
-          backgroundColor: recording ? "#F6DEDA" : pressed ? colors.sky : "transparent",
+          borderRadius: 20,
+          backgroundColor: handsFree || pressed ? colors.sky : "transparent",
         })}
       >
-        {busy ? (
-          <ActivityIndicator color={colors.muted} />
-        ) : recording ? (
-          <Square size={16} fill={colors.danger} strokeWidth={0} />
-        ) : (
-          <Mic size={21} strokeWidth={1.8} color={disabled ? "#B9C2C7" : colors.text} />
-        )}
+        <Radio size={17} strokeWidth={1.8} color={handsFree ? colors.danger : colors.muted} />
       </Pressable>
-      {recording && (
-        <Text
-          style={[s.small, { position: "absolute", bottom: -14, width: 90, textAlign: "center" }]}
+      <View style={{ alignItems: "center", justifyContent: "center" }}>
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel={recording ? "Release to send your voice message" : "Hold to talk"}
+          accessibilityState={{ busy, disabled: Boolean(disabled) }}
+          disabled={Boolean(disabled) || busy}
+          onPressIn={begin}
+          onPressOut={finish}
+          style={({ pressed }) => ({
+            width: 44,
+            height: 44,
+            borderRadius: 24,
+            alignItems: "center",
+            justifyContent: "center",
+            backgroundColor: recording ? "#F6DEDA" : pressed ? colors.sky : "transparent",
+          })}
         >
-          Listening…
-        </Text>
-      )}
+          {busy ? (
+            <ActivityIndicator color={colors.muted} />
+          ) : recording ? (
+            <Square size={16} fill={colors.danger} strokeWidth={0} />
+          ) : (
+            <Mic size={21} strokeWidth={1.8} color={disabled ? "#B9C2C7" : colors.text} />
+          )}
+        </Pressable>
+        {recording && (
+          <Text
+            style={[s.small, { position: "absolute", bottom: -14, width: 90, textAlign: "center" }]}
+          >
+            Listening…
+          </Text>
+        )}
+      </View>
     </View>
   );
 }
