@@ -37,6 +37,7 @@ import { ChatScreen, WorkspaceTools } from "./src/chat";
 import { ComputerEntry } from "./src/computer";
 import { ComputerDraftProvider } from "./src/computer-drafts";
 import { Details } from "./src/details";
+import { LanguageProvider, useTranslation } from "./src/i18n";
 import { BrowserScreen, CalendarScreen, FilesScreen, MailScreen } from "./src/screens";
 import { ThreadsProvider, ThreadsSheet, useMuseThread } from "./src/threads";
 import { Button, Card, colors, ErrorNotice, Field, IconButton, Mascot, s } from "./src/ui";
@@ -104,58 +105,60 @@ export default function App() {
     void connect();
   }, [connect]);
   return (
-    <SafeAreaProvider>
-      <StatusBar style="dark" />
-      {token ? (
-        <CopilotKitProvider
-          runtimeUrl={`${apiBaseUrl()}/api/copilotkit`}
-          headers={{ Authorization: `Bearer ${token}` }}
-        >
-          <WorkspaceApp token={token} />
-        </CopilotKitProvider>
-      ) : (
-        <SafeAreaView
-          style={{
-            flex: 1,
-            backgroundColor: colors.canvas,
-            justifyContent: "center",
-            alignItems: "center",
-            padding: 24,
-          }}
-        >
-          <View style={{ width: "100%", maxWidth: 420, gap: 22, alignItems: "center" }}>
-            <Mascot size={72} />
-            <Text
-              style={{ fontSize: 32, color: colors.text, letterSpacing: -1, fontWeight: "500" }}
-            >
-              Welcome to Vesper.
-            </Text>
-            <Text style={[s.muted, { textAlign: "center" }]}>A little room for your day.</Text>
-            {busy ? (
-              <ActivityIndicator color={colors.blueDark} />
-            ) : (
-              <Card style={{ width: "100%" }}>
-                <ErrorNotice error={error} />
-                <Field
-                  label="Workspace access key"
-                  value={accessKey}
-                  onChangeText={setAccessKey}
-                  secureTextEntry
-                  placeholder="Required for a live workspace"
-                />
-                <Button primary onPress={() => void connect(accessKey || undefined)}>
-                  Open workspace
-                </Button>
-                <Text style={[s.small, { marginTop: 15 }]}>
-                  Local workspaces open without a key. Make sure your Vesper server is running at{" "}
-                  {apiBaseUrl()}.
-                </Text>
-              </Card>
-            )}
-          </View>
-        </SafeAreaView>
-      )}
-    </SafeAreaProvider>
+    <LanguageProvider>
+      <SafeAreaProvider>
+        <StatusBar style="dark" />
+        {token ? (
+          <CopilotKitProvider
+            runtimeUrl={`${apiBaseUrl()}/api/copilotkit`}
+            headers={{ Authorization: `Bearer ${token}` }}
+          >
+            <WorkspaceApp token={token} />
+          </CopilotKitProvider>
+        ) : (
+          <SafeAreaView
+            style={{
+              flex: 1,
+              backgroundColor: colors.canvas,
+              justifyContent: "center",
+              alignItems: "center",
+              padding: 24,
+            }}
+          >
+            <View style={{ width: "100%", maxWidth: 420, gap: 22, alignItems: "center" }}>
+              <Mascot size={72} />
+              <Text
+                style={{ fontSize: 32, color: colors.text, letterSpacing: -1, fontWeight: "500" }}
+              >
+                Welcome to Vesper.
+              </Text>
+              <Text style={[s.muted, { textAlign: "center" }]}>A little room for your day.</Text>
+              {busy ? (
+                <ActivityIndicator color={colors.blueDark} />
+              ) : (
+                <Card style={{ width: "100%" }}>
+                  <ErrorNotice error={error} />
+                  <Field
+                    label="Workspace access key"
+                    value={accessKey}
+                    onChangeText={setAccessKey}
+                    secureTextEntry
+                    placeholder="Required for a live workspace"
+                  />
+                  <Button primary onPress={() => void connect(accessKey || undefined)}>
+                    Open workspace
+                  </Button>
+                  <Text style={[s.small, { marginTop: 15 }]}>
+                    Local workspaces open without a key. Make sure your Vesper server is running at{" "}
+                    {apiBaseUrl()}.
+                  </Text>
+                </Card>
+              )}
+            </View>
+          </SafeAreaView>
+        )}
+      </SafeAreaProvider>
+    </LanguageProvider>
   );
 }
 function WorkspaceApp({ token }: { token: string }) {
@@ -288,7 +291,14 @@ function WorkspaceShell({
     : data?.tasks.some((task) => task.status === "queued")
       ? "Picking up your next task…"
       : "Here when you need me";
-  const title = titles[section] || titles.apps;
+  const { t } = useTranslation();
+  // The English text stays the fallback, so a section without a translation
+  // still shows something sensible instead of a key.
+  const base = titles[section] || titles.apps || { title: "", subtitle: "" };
+  const title = {
+    title: t(`screen.${section}.title`, undefined, base.title),
+    subtitle: t(`screen.${section}.subtitle`, undefined, base.subtitle),
+  };
   const Screen =
     section === "mail"
       ? MailScreen
@@ -470,7 +480,7 @@ function WorkspaceShell({
                   <Pressable
                     key={item.id}
                     accessibilityRole="tab"
-                    accessibilityLabel={item.label}
+                    accessibilityLabel={t(`nav.${item.id}`, undefined, item.label)}
                     accessibilityState={{ selected: active }}
                     onPress={() => navigate(item.id)}
                     style={{

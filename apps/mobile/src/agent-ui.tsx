@@ -34,6 +34,7 @@ import type {
   RunEvent,
 } from "../../../packages/domain/src/agent";
 import { useAgentWorkspace } from "./agent-workspace";
+import { LANGUAGES, useLanguage, useTranslation } from "./i18n";
 import { ActivityScreen, ConnectionsScreen } from "./screens";
 import {
   Button,
@@ -1664,6 +1665,8 @@ export function NotificationsSheet() {
 }
 export function AppsScreen() {
   const { navigate, open } = useWorkspace();
+  const { t, language } = useTranslation();
+  const { setLanguage } = useLanguage();
   const { data, mutate } = useAgentWorkspace();
   const [query, setQuery] = useState("");
   const [settings, setSettings] = useState(false);
@@ -1727,6 +1730,21 @@ export function AppsScreen() {
   ];
   return (
     <View style={{ gap: 22 }}>
+      <Card style={{ gap: 10 }}>
+        <SectionHeading title={t("nav.settings.language")} />
+        <View style={[s.row, { gap: 8 }]}>
+          {LANGUAGES.map((item) => (
+            <Button
+              key={item.id}
+              small
+              primary={language === item.id}
+              onPress={() => setLanguage(item.id)}
+            >
+              {item.label}
+            </Button>
+          ))}
+        </View>
+      </Card>
       <AgentStatus />
       <Field
         label="Search apps"
