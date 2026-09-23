@@ -89,7 +89,7 @@ function svgFor({ size, scale, bg }) {
 }
 
 mkdirSync(here, { recursive: true });
-for (const [key, source] of Object.entries(sources)) {
+for (const source of Object.values(sources)) {
   const svg = svgFor(source);
   writeFileSync(join(here, source.svg), svg);
   for (const [name, width] of source.pngs) {

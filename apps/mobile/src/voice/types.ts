@@ -11,7 +11,13 @@ export interface Recording {
 
 export interface VoiceRecorderHandle {
   recording: boolean;
-  start: () => Promise<void>;
+  /**
+   * `onChunk` asks for audio as it is captured rather than only at the end, so
+   * recognition can begin while the person is still speaking. Platforms that
+   * cannot slice a recording accept the option and ignore it; the clip is still
+   * returned from `stop` either way.
+   */
+  start: (options?: { onChunk?: (chunk: Blob) => void }) => Promise<void>;
   stop: () => Promise<Recording | null>;
   cancel: () => Promise<void>;
 }

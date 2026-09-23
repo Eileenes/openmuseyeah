@@ -194,6 +194,8 @@ export function ChatScreen({
   const renderToolCall = useRenderToolCall();
   const speech = useSpeech();
   const [draft, setDraft] = useState("");
+  /** Transcript so far while the microphone is open; the server fills this in. */
+  const [heard, setHeard] = useState("");
   const [focused, setFocused] = useState(false);
   const [inputHeight, setInputHeight] = useState(44);
   const [showResults, setShowResults] = useState(false);
@@ -653,6 +655,14 @@ export function ChatScreen({
         </Button>
       )}
       <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : undefined}>
+        {!!heard && (
+          <Text
+            numberOfLines={2}
+            style={[s.small, { paddingHorizontal: 6, paddingBottom: 6, color: colors.muted }]}
+          >
+            {heard}
+          </Text>
+        )}
         <ErrorNotice error={speech.error} />
         <ErrorNotice error={saveError} />
         {!!saveError && (
@@ -871,11 +881,16 @@ export function ChatScreen({
               )}
             </Pressable>
             <VoiceInput
-              onRecordStart={speech.stop}
+              onRecordStart={() => {
+                speech.stop();
+                setHeard("");
+              }}
               disabled={!loaded || !isReady}
-              onTranscript={(text) =>
-                setDraft((current) => (current.trim() ? `${current.trim()} ${text}` : text))
-              }
+              onPartial={setHeard}
+              onTranscript={(text) => {
+                setHeard("");
+                setDraft((current) => (current.trim() ? `${current.trim()} ${text}` : text));
+              }}
               onError={setError}
             />
             <Pressable

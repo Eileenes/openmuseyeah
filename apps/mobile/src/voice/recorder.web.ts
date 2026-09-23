@@ -9,6 +9,9 @@ function pickMimeType(): string {
   return CANDIDATES.find((type) => MediaRecorder.isTypeSupported(type)) ?? "";
 }
 
+/** How much audio to hand over at a time while recognising. */
+const CHUNK_MS = 1200;
+
 function extensionFor(type: string): string {
   if (type.includes("mp4")) return "m4a";
   if (type.includes("ogg")) return "ogg";
@@ -28,7 +31,7 @@ export function useVoiceRecorder(): VoiceRecorderHandle {
     streamRef.current = null;
   }, []);
 
-  const start = useCallback(async () => {
+  const start = useCallback(async (options?: { onChunk?: (chunk: Blob) => void }) => {
     if (recorderRef.current) return;
     if (typeof navigator === "undefined" || !navigator.mediaDevices?.getUserMedia)
       throw new Error("This browser cannot record audio.");
@@ -38,9 +41,14 @@ export function useVoiceRecorder(): VoiceRecorderHandle {
     const recorder = mimeType ? new MediaRecorder(stream, { mimeType }) : new MediaRecorder(stream);
     chunksRef.current = [];
     recorder.ondataavailable = (event) => {
-      if (event.data.size > 0) chunksRef.current.push(event.data);
+      if (event.data.size === 0) return;
+      chunksRef.current.push(event.data);
+      // The server accumulates these, so partial slices are still decodable as
+      // a whole once they are re-joined there.
+      options?.onChunk?.(event.data);
     };
-    recorder.start();
+    // A timeslice is what makes `dataavailable` fire before the recording ends.
+    recorder.start(options?.onChunk ? CHUNK_MS : undefined);
     recorderRef.current = recorder;
     setRecording(true);
   }, []);

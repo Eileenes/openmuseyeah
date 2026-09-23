@@ -14,11 +14,14 @@ const message = (error: unknown) => (error instanceof Error ? error.message : St
  */
 export function VoiceInput({
   onTranscript,
+  onPartial,
   onError,
   onRecordStart,
   disabled,
 }: {
   onTranscript: (text: string) => void;
+  /** Transcript so far, while the person is still speaking. */
+  onPartial?: (text: string) => void;
   onError: (message: string) => void;
   /** Barge-in: reaching for the microphone means "stop talking". */
   onRecordStart?: () => void;
@@ -28,11 +31,46 @@ export function VoiceInput({
   const { recording, start, stop } = useVoiceRecorder();
   const [busy, setBusy] = useState(false);
   const sessionRef = useRef<Promise<void> | null>(null);
+  const streamRef = useRef<string | null>(null);
+  const streamBrokenRef = useRef(false);
 
   const begin = useCallback(async () => {
     if (disabled || busy || sessionRef.current) return;
     onRecordStart?.();
-    const started = start();
+    /*
+     * Recognition is fed while recording, so the session has to exist first —
+     * opening it late would drop the opening words, since the server
+     * transcribes what it has been given. It is only an optimisation: an
+     * unreachable server leaves the clip to be uploaded on release instead.
+     */
+    let streamId: string | null = null;
+    try {
+      streamId = (await api.openStream()).id;
+    } catch {
+      streamId = null;
+    }
+    streamRef.current = streamId;
+    streamBrokenRef.current = false;
+    const started = start({
+      onChunk: streamId
+        ? (chunk) => {
+            if (streamBrokenRef.current) return;
+            void chunk
+              .arrayBuffer()
+              .then((buffer) =>
+                api.pushStreamChunk(streamId, new Uint8Array(buffer), chunk.type || "audio/webm"),
+              )
+              .then((heard) => {
+                if (heard.text.trim()) onPartial?.(heard.text.trim());
+              })
+              .catch(() => {
+                // The clip still gets uploaded on release; a failure to
+                // recognise early must not surface as an error.
+                streamBrokenRef.current = true;
+              });
+          }
+        : undefined,
+    });
     sessionRef.current = started;
     try {
       await started;
@@ -40,7 +78,7 @@ export function VoiceInput({
       sessionRef.current = null;
       onError(message(error));
     }
-  }, [disabled, busy, start, onError, onRecordStart]);
+  }, [disabled, busy, start, onError, onRecordStart, api, onPartial]);
 
   const finish = useCallback(async () => {
     const started = sessionRef.current;
@@ -51,6 +89,20 @@ export function VoiceInput({
       // Wait for recording to actually begin before asking it to stop.
       await started.catch(() => undefined);
       const clip = await stop();
+      const streamId = streamRef.current;
+      streamRef.current = null;
+      if (streamId && !streamBrokenRef.current) {
+        try {
+          const heard = await api.finishStream(streamId);
+          const text = heard.text.trim();
+          if (text) {
+            onTranscript(text);
+            return;
+          }
+        } catch {
+          // Fall through to the clip below.
+        }
+      }
       if (!clip) return;
       const heard = await api.transcribe(clip);
       const text = heard.text.trim();

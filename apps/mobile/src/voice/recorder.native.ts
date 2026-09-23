@@ -15,6 +15,8 @@ export function useVoiceRecorder(): VoiceRecorderHandle {
   const recorder = useAudioRecorder(RecordingPresets.HIGH_QUALITY);
   const [recording, setRecording] = useState(false);
 
+  // expo-audio records to a file and does not expose slices, so `onChunk` is
+  // accepted and ignored; the transcript is produced from the finished clip.
   const start = useCallback(async () => {
     if (recording) return;
     const permission = await requestRecordingPermissionsAsync();
