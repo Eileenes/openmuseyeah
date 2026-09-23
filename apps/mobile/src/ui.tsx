@@ -2,7 +2,6 @@ import { ArrowUpRight, Check, ChevronRight, type LucideIcon, X } from "lucide-re
 import type { ReactNode } from "react";
 import {
   ActivityIndicator,
-  Image,
   Modal,
   Pressable,
   ScrollView,
@@ -15,6 +14,7 @@ import {
   type ViewStyle,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { VesperMark } from "./vesper-mark";
 export const colors = {
   canvas: "#FCFCFC",
   card: "#FFFFFF",
@@ -399,7 +399,7 @@ export function LinkRow({
     </Pressable>
   );
 }
-/** OpenMuse's original capybara, shared by every assistant surface. */
+/** Vesper's mark, shared by every assistant surface. */
 export function Mascot({
   size = 42,
   variant = "sky",
@@ -408,29 +408,32 @@ export function Mascot({
   variant?: "sky" | "sand" | "lilac";
 }) {
   const palette = {
-    sky: "#ECF5FA",
-    sand: "#FAF0DF",
-    lilac: "#F1ECF9",
+    sky: "#E8F4FC",
+    sand: "#FAF0DE",
+    lilac: "#F0ECFA",
   }[variant];
   return (
-    <View accessibilityLabel="OpenMuse capybara" style={{ width: size, height: size }}>
+    <View accessibilityLabel="Vesper assistant mark" style={{ width: size, height: size }}>
       <View
         style={{
           position: "absolute",
-          top: size * 0.15,
-          left: size * 0.12,
-          width: size * 0.76,
-          height: size * 0.76,
+          top: size * 0.08,
+          left: size * 0.08,
+          width: size * 0.84,
+          height: size * 0.84,
           borderRadius: size,
           backgroundColor: palette,
         }}
       />
-      <Image
-        source={require("../assets/capybara.png")}
-        resizeMode="contain"
-        style={{ width: size, height: size }}
-        accessible={false}
-      />
+      {/*
+        The mark is absolutely positioned on purpose. On web the tint above is a
+        positioned element, and CSS paints positioned elements over in-flow
+        content, which would hide a static child completely. Two positioned
+        siblings paint in DOM order, so the mark lands on top.
+      */}
+      <View style={{ position: "absolute", top: 0, left: 0, width: size, height: size }}>
+        <VesperMark size={size} variant={variant} />
+      </View>
     </View>
   );
 }

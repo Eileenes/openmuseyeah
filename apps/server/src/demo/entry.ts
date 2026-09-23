@@ -88,7 +88,7 @@ const api = spawn(
   },
 );
 console.log(
-  "OpenMuse recording demo: AI Mock scripts the model; browser visits use the real worker.",
+  "Vesper recording demo: AI Mock scripts the model; browser visits use the real worker.",
 );
 console.log(`Demo API: ${publicUrl}; browser worker: ${workerUrl}`);
 console.log(`Isolated demo data: ${dataDir}`);

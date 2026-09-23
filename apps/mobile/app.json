@@ -1,19 +1,40 @@
 {
   "expo": {
-    "name": "OpenMuse",
-    "slug": "openmuse",
-    "scheme": "openmuse",
+    "name": "Vesper",
+    "slug": "vesper",
+    "scheme": "vesper",
     "version": "0.1.0",
     "orientation": "default",
     "userInterfaceStyle": "light",
     "newArchEnabled": true,
-    "ios": { "supportsTablet": true, "bundleIdentifier": "app.openmuse.mobile" },
-    "android": { "package": "app.openmuse.mobile" },
-    "web": { "bundler": "metro", "name": "OpenMuse — a little room for everything" },
+    "icon": "./assets/icon.png",
+    "splash": {
+      "image": "./assets/splash.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#F7FBFE"
+    },
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "app.vesper.mobile",
+      "icon": "./assets/icon.png"
+    },
+    "android": {
+      "package": "app.vesper.mobile",
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/adaptive-icon.png",
+        "backgroundColor": "#0B1626"
+      }
+    },
+    "web": {
+      "bundler": "metro",
+      "name": "Vesper — your personal assistant",
+      "favicon": "./assets/favicon.png"
+    },
     "plugins": [
       "expo-document-picker",
       "@config-plugins/react-native-blob-util",
-      "@config-plugins/react-native-pdf"
+      "@config-plugins/react-native-pdf",
+      "expo-audio"
     ]
   }
 }

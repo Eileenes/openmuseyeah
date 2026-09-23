@@ -11,3 +11,10 @@ apps/mobile/android/
 .DS_Store
 *.tsbuildinfo
 artifacts/
+# Local pnpm content-addressable store (npm keeps it in the repo here)
+.pnpm-store/
+
+# Rust build output (Tauri desktop shell)
+target/
+**/src-tauri/gen/
+**/src-tauri/sidecar/

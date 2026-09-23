@@ -45,6 +45,8 @@
     "@biomejs/biome": "^2.4.0",
     "@copilotkit/aimock": "1.42.0",
     "@copilotkit/core": "1.70.1",
+    "@resvg/resvg-js": "^2.6.2",
+    "@tauri-apps/cli": "^2.11.5",
     "@types/node": "^24.0.0",
     "@types/pg": "^8.15.5",
     "tsx": "^4.20.0",

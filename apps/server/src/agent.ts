@@ -10,6 +10,7 @@ import type { Auth } from "./auth.ts";
 import type { Config } from "./config.ts";
 import { ConversationAgent } from "./engine/conversation.ts";
 import type { AgentService } from "./engine/service.ts";
+import { resolveModel } from "./model-settings.ts";
 
 export function agentConfigured(config: Config) {
   return (
@@ -30,32 +31,28 @@ export function makeRuntime(
   auth: Auth,
   intelligence?: CopilotKitIntelligence,
 ) {
-  const agents: AgentsFactory = async ({ request }) => ({
-    default:
-      config.agentBackend === "sample"
-        ? new ConversationAgent(
-            config,
-            service,
-            await auth.owner(request.headers.get("authorization") ?? undefined),
-          )
-        : config.agentBackend === "agui"
+  const agents: AgentsFactory = async ({ request }) => {
+    const owner = await auth.owner(request.headers.get("authorization") ?? undefined);
+    // Resolved per request so a model saved in Assistant settings takes effect
+    // on the next turn without restarting the server.
+    const model = await resolveModel(service.db, config, owner);
+    return {
+      default:
+        config.agentBackend === "agui"
           ? new HttpAgent({
               url: config.agentUrl ?? "http://127.0.0.1:1/unconfigured",
               headers: config.agentToken ? { Authorization: `Bearer ${config.agentToken}` } : {},
             })
-          : new ConversationAgent(
-              config,
-              service,
-              await auth.owner(request.headers.get("authorization") ?? undefined),
-            ),
-  });
+          : new ConversationAgent(config, service, owner, model),
+    };
+  };
   const runtime = intelligence
     ? new CopilotRuntime({
         agents,
         intelligence,
         identifyUser: async (request) => ({
           id: await auth.owner(request.headers.get("authorization") ?? undefined),
-          name: "OpenMuse user",
+          name: "Vesper user",
         }),
         generateThreadNames: false,
       })

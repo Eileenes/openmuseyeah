@@ -48,3 +48,39 @@ The `build:ios` and `build:android` commands validate and export platform JavaSc
 - Google connects through the system browser. Refresh the workspace after completing OAuth.
 
 Phone and wide layouts share Chat, Activity, Ideas, Goals and Apps. The task and notification sheets restore server state when reopened. Document and browser viewers have platform-specific files; presentation and state remain shared.
+
+## Building for a device
+
+The native projects are generated and their dependencies are installed, so a
+local build needs no further setup. Only the cloud build needs an account.
+
+### Local, on your own machine
+
+```sh
+cd apps/mobile
+npx expo run:ios      # or: npx expo run:android
+```
+
+This is the build that has **never been run**. Everything up to it is verified —
+the native project is generated, `NSMicrophoneUsageDescription` is present,
+`RECORD_AUDIO` is present, and 90 pods are installed — but the app itself has
+not been launched on a device, so the microphone, interruption and native
+playback paths have no runtime evidence yet.
+
+A real device build is also the only way to check the voice-activity threshold in
+`packages/voice/src/utterance.ts`; its default of `0.02` was chosen on paper and
+will likely need tuning per device.
+
+### Cloud, with EAS
+
+`eas.json` defines three profiles: `development` (a dev client), `preview`
+(an installable APK), and `production` (store builds).
+
+```sh
+npx eas-cli login
+npx eas-cli build --profile preview --platform ios
+```
+
+This needs your Expo account: it uploads the project to Expo's servers, so it is
+deliberately not run for you publicly. Once logged in, `eas build` reads
+`apps/mobile/eas.json` and `app.json` and needs no other configuration.

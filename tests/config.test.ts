@@ -1,6 +1,10 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { assertApiDeploymentConfig, type Config } from "../apps/server/src/config.ts";
+import {
+  assertApiDeploymentConfig,
+  type Config,
+  DEFAULT_ALLOWED_ORIGINS,
+} from "../apps/server/src/config.ts";
 
 const sampleConfig: Config = {
   mode: "sample",
@@ -43,4 +47,26 @@ test("live API configuration accepts a non-empty Intelligence key", () => {
 
 test("sample API configuration remains key-free", () => {
   assert.doesNotThrow(() => assertApiDeploymentConfig(sampleConfig));
+});
+
+test("the desktop shell's webview origins are allowed by default", () => {
+  // A webview sends its own origin, not the dev server's, so a packaged app is
+  // rejected as cross-origin unless these are present out of the box.
+  for (const origin of ["tauri://localhost", "http://tauri.localhost"]) {
+    assert.ok(DEFAULT_ALLOWED_ORIGINS.includes(origin), `${origin} must be allowed`);
+  }
+});
+
+test("the default origin list stays a closed allow-list", () => {
+  for (const origin of DEFAULT_ALLOWED_ORIGINS) {
+    assert.ok(
+      origin.startsWith("http://localhost") ||
+        origin.startsWith("http://127.0.0.1") ||
+        origin.startsWith("tauri://") ||
+        origin.startsWith("http://tauri.localhost") ||
+        origin.startsWith("https://tauri.localhost"),
+      `${origin} is broader than expected`,
+    );
+  }
+  assert.ok(!DEFAULT_ALLOWED_ORIGINS.includes("*"), "a wildcard would defeat the boundary");
 });

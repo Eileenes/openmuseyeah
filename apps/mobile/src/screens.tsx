@@ -38,7 +38,7 @@ import type {
   CalendarEvent,
   EmailDraft,
 } from "../../../packages/domain/src";
-import { API_URL } from "./api";
+import { apiBaseUrl } from "./api";
 import { localDateTime, zonedInstant } from "./date-time";
 import {
   Button,
@@ -945,7 +945,7 @@ export function FilesScreen() {
         form.append("file", file.file, file.name);
         artifact = await api.request<Artifact>("/api/files", form);
       } else {
-        const result = await FileSystem.uploadAsync(`${API_URL}/api/files`, file.uri, {
+        const result = await FileSystem.uploadAsync(`${apiBaseUrl()}/api/files`, file.uri, {
           httpMethod: "POST",
           uploadType: FileSystem.FileSystemUploadType.MULTIPART,
           fieldName: "file",
@@ -1368,8 +1368,8 @@ export function ConnectionsScreen({ query = "" }: { query?: string }) {
                 has not been configured.
               </Text>
               <Text style={s.muted}>
-                Your current computer uses OpenMuse’s persistent Chromium worker. OpenBot
-                integration will expand the execution backend while keeping this interface.
+                Your current computer uses Vesper’s persistent Chromium worker. OpenBot integration
+                will expand the execution backend while keeping this interface.
               </Text>
             </View>
           )}

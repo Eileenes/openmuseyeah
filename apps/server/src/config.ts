@@ -5,6 +5,22 @@ if (existsSync(".env")) process.loadEnvFile(".env");
 process.env.DO_NOT_TRACK ??= "1";
 process.env.COPILOTKIT_TELEMETRY_DISABLED ??= "true";
 
+/**
+ * Origins allowed to call the API from a browser context.
+ *
+ * The desktop shell is a first-class client, and a webview sends its own origin
+ * rather than the dev server's: `tauri://localhost` on macOS and Linux,
+ * `http://tauri.localhost` on Windows. Without these the packaged app loads and
+ * then has every request rejected as a cross-origin call.
+ */
+export const DEFAULT_ALLOWED_ORIGINS = [
+  "http://localhost:8081",
+  "http://127.0.0.1:8081",
+  "tauri://localhost",
+  "http://tauri.localhost",
+  "https://tauri.localhost",
+];
+
 export interface Config {
   mode: "sample" | "live";
   port: number;
@@ -29,6 +45,16 @@ export interface Config {
   computerImage?: string;
   computerDeploymentId?: string;
   allowedOrigins: string[];
+  /**
+   * Shared secret between the desktop shell and the API it starts.
+   *
+   * A packaged webview uses a custom scheme, so its requests arrive with an
+   * opaque `Origin: null` that cannot be allow-listed by name — and allowing
+   * `null` for everyone would let any sandboxed page on the web reach a
+   * loopback server. The shell gives this token to both sides, so only its own
+   * window is let through.
+   */
+  shellToken?: string;
 }
 
 const missingIntelligenceKeyMessage =
@@ -77,9 +103,8 @@ export function readConfig(): Config {
     computerEnabled: process.env.COMPUTER_ENABLED === "true",
     computerImage: process.env.COMPUTER_IMAGE ?? "openmuse-computer:local",
     computerDeploymentId: process.env.COMPUTER_DEPLOYMENT_ID,
-    allowedOrigins: (
-      process.env.ALLOWED_ORIGINS ?? "http://localhost:8081,http://127.0.0.1:8081"
-    ).split(","),
+    shellToken: process.env.VESPER_SHELL_TOKEN,
+    allowedOrigins: (process.env.ALLOWED_ORIGINS ?? DEFAULT_ALLOWED_ORIGINS.join(",")).split(","),
   };
   if (
     mode === "live" &&

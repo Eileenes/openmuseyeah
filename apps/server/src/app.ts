@@ -6,6 +6,7 @@ import { bodyLimit } from "hono/body-limit";
 import { cors } from "hono/cors";
 import { z } from "zod";
 import { emailDraftSchema, proposalSchema } from "../../../packages/domain/src/index.ts";
+import { audioFormatSchema, silenceWav } from "../../../packages/voice/src/index.ts";
 import { ActionService } from "./actions.ts";
 import { agentConfigured, makeRuntime } from "./agent.ts";
 import { createAuth } from "./auth.ts";
@@ -19,6 +20,7 @@ import { AgentService } from "./engine/service.ts";
 import { AppError } from "./errors.ts";
 import { Files } from "./files.ts";
 import { GoogleAuth } from "./google-auth.ts";
+import { VoiceService } from "./voice.ts";
 import { WorkspaceService } from "./workspace.ts";
 
 export async function createApp(
@@ -29,7 +31,8 @@ export async function createApp(
   const auth = await createAuth(db, config),
     files = new Files(db, config, auth),
     google = new GoogleAuth(db, config),
-    workspace = new WorkspaceService(db, config, files, google);
+    workspace = new WorkspaceService(db, config, files, google),
+    voice = new VoiceService(db, config);
   const actions = new ActionService(db, {
     execute: (owner, input, connectionId, targetVersion) =>
       workspace.execute(owner, input, connectionId, targetVersion),
@@ -46,9 +49,32 @@ export async function createApp(
   const runtime = makeRuntime(config, agent, auth, intelligence);
   const app = new Hono<{ Variables: { owner: string } }>();
   const origins = new Set([...config.allowedOrigins, new URL(config.publicUrl).origin]);
+  /*
+   * The desktop shell's window uses a custom scheme, so its requests carry an
+   * opaque `Origin: null` that cannot be allow-listed by name. Allowing `null`
+   * for everyone would let any sandboxed page on the web reach a loopback
+   * server, so it is only accepted together with the token the shell shares
+   * with the API it started.
+   */
+  const fromShell = (header: (name: string) => string | undefined) =>
+    Boolean(config.shellToken) && header("x-vesper-shell") === config.shellToken;
+  /*
+   * A preflight carries only the origin and the requested method/headers — a
+   * browser never sends the custom header on it. So the token cannot be checked
+   * there, and requiring it rejected the preflight before the real request was
+   * ever attempted. Letting the preflight through discloses nothing: it performs
+   * no action, and the request that follows is still token-gated.
+   */
+  const opaqueOriginAllowed = (c: {
+    req: { method: string; header: (n: string) => string | undefined };
+  }) => c.req.method === "OPTIONS" || fromShell((name) => c.req.header(name));
   app.use("*", async (c, next) => {
     const origin = c.req.header("origin");
-    if (origin && !origins.has(origin)) return c.json({ error: "Origin is not allowed" }, 403);
+    if (origin === "null") {
+      if (!opaqueOriginAllowed(c)) return c.json({ error: "Origin is not allowed" }, 403);
+    } else if (origin && !origins.has(origin)) {
+      return c.json({ error: "Origin is not allowed" }, 403);
+    }
     c.header("X-Content-Type-Options", "nosniff");
     c.header("Referrer-Policy", "no-referrer");
     c.header("Cache-Control", "no-store");
@@ -57,8 +83,13 @@ export async function createApp(
   app.use(
     "*",
     cors({
-      origin: (origin) => (origins.has(origin) ? origin : undefined),
-      allowHeaders: ["Content-Type", "Authorization"],
+      origin: (origin, c) =>
+        origins.has(origin)
+          ? origin
+          : origin === "null" && opaqueOriginAllowed(c)
+            ? "null"
+            : undefined,
+      allowHeaders: ["Content-Type", "Authorization", "X-Vesper-Shell"],
       allowMethods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
       credentials: true,
     }),
@@ -78,7 +109,7 @@ export async function createApp(
       return c.json({ error: error.message }, 422);
     if (error instanceof SyntaxError) return c.json({ error: "Invalid request data" }, 400);
     // Provider and document errors are useful, but raw stack traces and token-bearing responses are not.
-    console.error(`[OpenMuse] ${error.name}`);
+    console.error(`[Vesper] ${error.name}`);
     return c.json(
       {
         error:
@@ -115,18 +146,18 @@ export async function createApp(
   });
   app.get("/api/google/callback", async (c) => {
     if (c.req.query("error"))
-      return c.html("<h1>Google connection cancelled</h1><p>You can return to OpenMuse.</p>", 400);
+      return c.html("<h1>Google connection cancelled</h1><p>You can return to Vesper.</p>", 400);
     const state = c.req.query("state"),
       code = c.req.query("code");
     if (!state || !code) throw new AppError("Google callback is incomplete");
     await google.callback(state, code);
     return c.html(
-      "<h1>Google is connected</h1><p>Return to OpenMuse and refresh your workspace.</p>",
+      "<h1>Google is connected</h1><p>Return to Vesper and refresh your workspace.</p>",
     );
   });
   app.use("/api/*", async (c, next) => {
     const signedRoute =
-      /^\/api\/files\/[^/]+\/content$|^\/api\/browsers\/[^/]+\/(?:preview|console)$/.test(
+      /^\/api\/files\/[^/]+\/content$|^\/api\/browsers\/[^/]+\/(?:preview|console)$|^\/api\/voice\/audio\/[^/]+$/.test(
         c.req.path,
       );
     const owner =
@@ -140,6 +171,114 @@ export async function createApp(
     const snapshot = await workspace.snapshot(c.get("owner"), c.req.query("q"));
     snapshot.browsers = snapshot.browsers.map((s) => browser.decorate(c.get("owner"), s));
     return c.json(snapshot);
+  });
+  app.get("/api/settings/models", async (c) => c.json(await voice.publicSettings(c.get("owner"))));
+  // Symmetric with GET: the client applies the same view after a write, so a
+  // bare settings object here would leave the screen without its credential
+  // and voice metadata.
+  app.put("/api/settings/models", async (c) => {
+    await voice.saveSettings(c.get("owner"), await c.req.json());
+    return c.json(await voice.publicSettings(c.get("owner")));
+  });
+  // Exercises the configured providers with a minimal payload, so a saved key
+  // is proven to work instead of merely stored.
+  app.post("/api/settings/models/test", async (c) => {
+    const owner = c.get("owner");
+    const [speech, speechSynthesis] = await Promise.allSettled([
+      voice.transcribe(owner, { audio: silenceWav(0.4), mimeType: "audio/wav" }),
+      voice.synthesize(owner, { text: "Vesper voice check." }),
+    ]);
+    const detail = (reason: unknown) =>
+      reason instanceof Error ? reason.message : "The provider could not be reached";
+    return c.json({
+      speechToText:
+        speech.status === "fulfilled"
+          ? {
+              ok: true,
+              provider: speech.value.provider,
+              model: speech.value.model,
+              text: speech.value.text,
+            }
+          : { ok: false, error: detail(speech.reason) },
+      textToSpeech:
+        speechSynthesis.status === "fulfilled"
+          ? {
+              ok: true,
+              provider: speechSynthesis.value.provider,
+              bytes: speechSynthesis.value.audio.byteLength,
+            }
+          : { ok: false, error: detail(speechSynthesis.reason) },
+    });
+  });
+  app.post("/api/voice/transcribe", async (c) => {
+    const contentType = c.req.header("content-type") ?? "";
+    const maxBytes = 8 * 1024 * 1024;
+    let audio: Uint8Array;
+    let mimeType: string;
+    if (contentType.startsWith("multipart/form-data")) {
+      // React Native cannot reliably send a raw byte body, so the app uploads a
+      // multipart field. Accepting both keeps curl and simple clients working.
+      const body = await c.req.parseBody();
+      const upload = body.audio;
+      if (!(upload instanceof File))
+        throw new AppError("Attach the recording as an audio file field", 422);
+      if (upload.size > maxBytes)
+        throw new AppError("That recording is too large; keep clips under 8 MB", 413);
+      audio = new Uint8Array(await upload.arrayBuffer());
+      mimeType = upload.type || "audio/wav";
+    } else if (contentType.startsWith("audio/")) {
+      const body = await c.req.arrayBuffer();
+      if (body.byteLength > maxBytes)
+        throw new AppError("That recording is too large; keep clips under 8 MB", 413);
+      audio = new Uint8Array(body);
+      mimeType = contentType.split(";")[0]?.trim() ?? "audio/wav";
+    } else {
+      throw new AppError("Send the recording as audio/* or a multipart audio field", 415);
+    }
+    if (audio.byteLength === 0) throw new AppError("That recording was empty", 422);
+    return c.json(await voice.transcribe(c.get("owner"), { audio, mimeType }));
+  });
+  app.post("/api/voice/streams", async (c) =>
+    c.json({ id: await voice.startStream(c.get("owner")) }),
+  );
+  app.post("/api/voice/streams/:id/chunks", async (c) => {
+    const contentType = c.req.header("content-type") ?? "";
+    if (!contentType.startsWith("audio/"))
+      throw new AppError("Send audio chunks as an audio/* body", 415);
+    const body = await c.req.arrayBuffer();
+    if (body.byteLength > 2 * 1024 * 1024) throw new AppError("That audio chunk is too large", 413);
+    return c.json({
+      ...(await voice.pushStream(c.get("owner"), c.req.param("id"), new Uint8Array(body))),
+      final: false,
+    });
+  });
+  app.post("/api/voice/streams/:id/finish", async (c) =>
+    c.json({ ...(await voice.finishStream(c.get("owner"), c.req.param("id"))), final: true }),
+  );
+  app.post("/api/voice/speak", async (c) => {
+    const body = z
+      .object({ text: z.string().min(1).max(4000), format: audioFormatSchema.optional() })
+      .parse(await c.req.json());
+    const owner = c.get("owner");
+    const result = await voice.synthesize(owner, { text: body.text, format: body.format });
+    // Hand back a signed link rather than bytes: a native audio player cannot
+    // send an Authorization header, and this is the pattern files already use.
+    return c.json({
+      url: auth.sign(owner, `/api/voice/audio/${voice.putAudio(result)}`),
+      mimeType: result.mimeType,
+      provider: result.provider,
+      voiceId: result.voiceId,
+      spoken: result.spoken,
+    });
+  });
+  app.get("/api/voice/audio/:id", (c) => {
+    const entry = voice.getAudio(c.req.param("id"));
+    if (!entry) throw new AppError("That audio has expired. Ask Vesper to say it again.", 404);
+    c.header("Content-Type", entry.mimeType);
+    const { bytes } = entry;
+    return c.body(
+      bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer,
+    );
   });
   app.route("/api/agent", agentRoutes(agent));
   app.route("/api/computer", computerRoutes(computer, files));
@@ -339,7 +478,7 @@ export async function createApp(
     return new Response(body, { status: response.status, headers: response.headers });
   });
   app.get("/", (c) =>
-    c.json({ name: "OpenMuse", app: "http://localhost:8081", health: "/api/health" }),
+    c.json({ name: "Vesper", app: "http://localhost:8081", health: "/api/health" }),
   );
   return { app, auth, files, actions, workspace, agent, computer };
 }
