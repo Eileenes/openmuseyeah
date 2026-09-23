@@ -186,15 +186,20 @@ pub fn run() {
                          try {{ fetch('http://127.0.0.1:8901/' + encodeURIComponent(message), {{mode:'no-cors'}}); }} catch (e) {{}} \
                        }}; \
                        report('readyState=' + document.readyState); \
-                       report('text=' + (document.body ? document.body.innerText.slice(0, 400) : 'no-body')); \
-                       report('scripts=' + document.scripts.length); \
-                       var tag = document.querySelector('script[src]'); \
-                       report('firstScript=' + (tag ? tag.getAttribute('src') : 'none')); \
-                       if (tag) {{ \
-                         fetch(tag.src).then(function (r) {{ report('bundleHTTP=' + r.status); }}) \
-                                     .catch(function (e) {{ report('bundleFAIL=' + e); }}); \
-                       }} \
-                       try {{ fetch('http://127.0.0.1:{port}/api/health', {{mode:'no-cors'}}); report('apiReachable'); }} catch (e) {{ report('apiFail=' + e); }} \
+                       report('tokenPresent=' + (window.__VESPER_SHELL_TOKEN__ ? 'yes' : 'no')); \
+                       report('text=' + (document.body ? document.body.innerText.slice(0, 320) : 'no-body')); \
+                       /*
+                        * Issue exactly the request the interface issues, so a
+                        * failure here is the interface's failure and not a
+                        * property of a simpler probe.
+                        */ \
+                       fetch('http://127.0.0.1:{port}/api/session', {{ \
+                         method: 'POST', \
+                         headers: {{ 'Content-Type': 'application/json', 'X-Vesper-Shell': window.__VESPER_SHELL_TOKEN__ || '' }}, \
+                         body: '{{}}' \
+                       }}).then(function (r) {{ \
+                         return r.text().then(function (t) {{ report('sessionHTTP=' + r.status + ' body=' + t.slice(0, 140)); }}); \
+                       }}).catch(function (e) {{ report('sessionFAIL=' + e.name + ':' + e.message); }}); \
                      }}, 4000);"
                 ));
             }

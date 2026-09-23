@@ -14,7 +14,7 @@ import {
   type ViewStyle,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { VesperMark } from "./vesper-mark";
+import { markTint, VesperMark } from "./vesper-mark";
 export const colors = {
   canvas: "#FCFCFC",
   card: "#FFFFFF",
@@ -407,11 +407,8 @@ export function Mascot({
   size?: number;
   variant?: "sky" | "sand" | "lilac";
 }) {
-  const palette = {
-    sky: "#E8F4FC",
-    sand: "#FAF0DE",
-    lilac: "#F0ECFA",
-  }[variant];
+  // Slightly deeper than a hairline tint so the white head reads against it.
+  const palette = markTint(variant);
   return (
     <View accessibilityLabel="Vesper assistant mark" style={{ width: size, height: size }}>
       <View
@@ -432,7 +429,7 @@ export function Mascot({
         siblings paint in DOM order, so the mark lands on top.
       */}
       <View style={{ position: "absolute", top: 0, left: 0, width: size, height: size }}>
-        <VesperMark size={size} variant={variant} />
+        <VesperMark size={size} />
       </View>
     </View>
   );

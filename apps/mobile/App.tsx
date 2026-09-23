@@ -75,8 +75,25 @@ export default function App() {
     setBusy(true);
     setError("");
     try {
-      const session = await createSession(key);
-      setToken(session.token);
+      /*
+       * A packaged desktop app starts its own API next to the window, and that
+       * server needs a couple of seconds before it can answer. Without waiting
+       * the window always lost the race and dropped the person on a sign-in
+       * screen. A supplied key is not retried: a wrong one should say so at once.
+       */
+      const attempts = key ? 1 : 20;
+      let lastError: unknown = new Error("Could not open your workspace.");
+      for (let attempt = 0; attempt < attempts; attempt += 1) {
+        try {
+          const session = await createSession(key);
+          setToken(session.token);
+          return;
+        } catch (e) {
+          lastError = e;
+          if (attempt + 1 < attempts) await new Promise((resolve) => setTimeout(resolve, 400));
+        }
+      }
+      throw lastError;
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
@@ -111,7 +128,7 @@ export default function App() {
             <Text
               style={{ fontSize: 32, color: colors.text, letterSpacing: -1, fontWeight: "500" }}
             >
-              Welcome to OpenMuse.
+              Welcome to Vesper.
             </Text>
             <Text style={[s.muted, { textAlign: "center" }]}>A little room for your day.</Text>
             {busy ? (
@@ -261,7 +278,7 @@ function WorkspaceShell({
     data?.tasks.find(
       (task) => task.status === "waiting_approval" || task.status === "waiting_input",
     ) || data?.tasks.find((task) => task.status === "running");
-  const agentName = data?.identity.name || "OpenMuse";
+  const agentName = data?.identity.name || "Vesper";
   const status = activeTask
     ? activeTask.status === "waiting_approval"
       ? `Ready to review · ${activeTask.title}`

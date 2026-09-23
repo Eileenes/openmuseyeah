@@ -108,7 +108,13 @@ export async function createSession(
 ): Promise<{ token: string; mode: "sample" | "live" }> {
   const response = await fetch(`${apiBaseUrl()}/api/session`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: {
+      "Content-Type": "application/json",
+      // This runs before any session exists, so it cannot go through MuseApi —
+      // but it still has to carry the shell's token, because the packaged
+      // window's origin is opaque and is only accepted together with it.
+      ...(shellToken() ? { "X-Vesper-Shell": shellToken() as string } : {}),
+    },
     body: JSON.stringify({ accessKey }),
   });
   const payload = await response.json();
