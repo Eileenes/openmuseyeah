@@ -1,14 +1,15 @@
 import { useCallback, useState } from "react";
 import { Text, View } from "react-native";
 import type { ModelSettingsView } from "./api";
+import { useTranslation } from "./i18n";
 import { Button, Card, CheckRow, colors, ErrorNotice, Field, SectionHeading, s } from "./ui";
 import { useWorkspace } from "./workspace";
 
 const PROVIDERS = ["stub", "openai"] as const;
 const LLM_PROVIDERS = ["openai", "anthropic", "google"] as const;
-const PROVIDER_LABEL: Record<string, string> = {
-  stub: "Offline",
-  openai: "OpenAI",
+const PROVIDER_KEY: Record<string, string> = {
+  stub: "voice.provider.stub",
+  openai: "voice.provider.openai",
 };
 const describe = (error: unknown) => (error instanceof Error ? error.message : String(error));
 
@@ -17,6 +18,7 @@ const describe = (error: unknown) => (error instanceof Error ? error.message : S
  * the screen stays cheap for people who never touch it.
  */
 export function VoiceSettings() {
+  const { t } = useTranslation();
   const { api } = useWorkspace();
   const [open, setOpen] = useState(false);
   const [view, setView] = useState<ModelSettingsView | null>(null);
@@ -70,7 +72,9 @@ export function VoiceSettings() {
     await run(`${kind}-provider`, async () => {
       apply(await api.saveModelSettings({ [kind]: { provider } }));
       setNote(
-        `${kind === "stt" ? "Speech to text" : "Speech"} now uses ${PROVIDER_LABEL[provider]}.`,
+        t(kind === "stt" ? "voice.note.sttProvider" : "voice.note.ttsProvider", {
+          provider: t(PROVIDER_KEY[provider]),
+        }),
       );
     });
   }
@@ -85,7 +89,7 @@ export function VoiceSettings() {
           voice: { speakReplies },
         }),
       );
-      setNote("Saved.");
+      setNote(t("status.saved"));
     });
   }
 
@@ -93,7 +97,7 @@ export function VoiceSettings() {
     await run("key", async () => {
       apply(await api.saveModelSettings({ keys: { openai: secret.trim() } }));
       setSecret("");
-      setNote("Key encrypted and stored on the server.");
+      setNote(t("voice.keyStored"));
     });
   }
 
@@ -101,11 +105,14 @@ export function VoiceSettings() {
     await run("test", async () => {
       const result = await api.testModelSettings();
       const speech = result.speechToText.ok
-        ? `Speech to text: ok (${result.speechToText.provider})`
-        : `Speech to text: ${result.speechToText.error}`;
+        ? t("voice.test.sttOk", { provider: String(result.speechToText.provider ?? "") })
+        : t("voice.test.sttError", { error: String(result.speechToText.error ?? "") });
       const voice = result.textToSpeech.ok
-        ? `Speech: ok (${result.textToSpeech.provider}, ${result.textToSpeech.bytes} bytes)`
-        : `Speech: ${result.textToSpeech.error}`;
+        ? t("voice.test.ttsOk", {
+            provider: String(result.textToSpeech.provider ?? ""),
+            bytes: result.textToSpeech.bytes ?? 0,
+          })
+        : t("voice.test.ttsError", { error: String(result.textToSpeech.error ?? "") });
       setNote(`${speech} · ${voice}`);
     });
   }
@@ -113,14 +120,14 @@ export function VoiceSettings() {
   const credential = view?.credentials.openai;
   return (
     <View style={{ gap: 12 }}>
-      <Button onPress={toggle}>{open ? "Close voice & models" : "Voice & models"}</Button>
+      <Button onPress={toggle}>{t(open ? "voice.close" : "voice.open")}</Button>
       {open && (
         <Card style={{ gap: 12 }}>
-          <SectionHeading title="Voice & models" />
-          {!view && <Text style={s.muted}>Loading…</Text>}
+          <SectionHeading title={t("voice.title")} />
+          {!view && <Text style={s.muted}>{t("common.loading")}</Text>}
           {view && (
             <>
-              <Text style={s.label}>Reasoning model</Text>
+              <Text style={s.label}>{t("voice.reasoning")}</Text>
               <View style={[s.row, { gap: 8, flexWrap: "wrap" }]}>
                 {LLM_PROVIDERS.map((provider) => (
                   <Button
@@ -134,18 +141,15 @@ export function VoiceSettings() {
                 ))}
               </View>
               <Field
-                label="Model id"
+                label={t("voice.modelId")}
                 value={llmModel}
                 onChangeText={setLlmModel}
                 autoCapitalize="none"
-                placeholder="Leave blank to use the server default"
+                placeholder={t("voice.modelId.placeholder")}
               />
-              <Text style={s.small}>
-                Credentials for the reasoning model come from the server environment. Changes apply
-                to your next message.
-              </Text>
+              <Text style={s.small}>{t("voice.reasoning.note")}</Text>
 
-              <Text style={s.label}>Speech to text</Text>
+              <Text style={s.label}>{t("voice.stt")}</Text>
               <View style={[s.row, { gap: 8 }]}>
                 {PROVIDERS.map((provider) => (
                   <Button
@@ -154,19 +158,19 @@ export function VoiceSettings() {
                     primary={view.settings.stt.provider === provider}
                     onPress={() => void chooseProvider("stt", provider)}
                   >
-                    {PROVIDER_LABEL[provider]}
+                    {t(PROVIDER_KEY[provider])}
                   </Button>
                 ))}
               </View>
-              <Field label="Transcription model" value={sttModel} onChangeText={setSttModel} />
+              <Field label={t("voice.stt.model")} value={sttModel} onChangeText={setSttModel} />
               <Field
-                label="Spoken language"
+                label={t("voice.stt.language")}
                 value={language}
                 onChangeText={setLanguage}
-                placeholder="zh, en, or blank to detect"
+                placeholder={t("voice.stt.language.placeholder")}
               />
 
-              <Text style={s.label}>Spoken replies</Text>
+              <Text style={s.label}>{t("voice.tts")}</Text>
               <View style={[s.row, { gap: 8 }]}>
                 {PROVIDERS.map((provider) => (
                   <Button
@@ -175,14 +179,14 @@ export function VoiceSettings() {
                     primary={view.settings.tts.provider === provider}
                     onPress={() => void chooseProvider("tts", provider)}
                   >
-                    {PROVIDER_LABEL[provider]}
+                    {t(PROVIDER_KEY[provider])}
                   </Button>
                 ))}
               </View>
-              <Field label="Speech model" value={ttsModel} onChangeText={setTtsModel} />
-              <Field label="Voice" value={voiceId} onChangeText={setVoiceId} />
+              <Field label={t("voice.tts.model")} value={ttsModel} onChangeText={setTtsModel} />
+              <Field label={t("voice.tts.voice")} value={voiceId} onChangeText={setVoiceId} />
               <Field
-                label="Speed"
+                label={t("voice.tts.speed")}
                 value={speed}
                 onChangeText={setSpeed}
                 keyboardType="numeric"
@@ -203,21 +207,23 @@ export function VoiceSettings() {
                 </View>
               )}
               <CheckRow
-                label="Read replies aloud"
+                label={t("voice.speakReplies")}
                 checked={speakReplies}
                 onPress={() => setSpeakReplies(!speakReplies)}
               />
 
-              <Text style={s.label}>OpenAI key</Text>
+              <Text style={s.label}>{t("voice.key")}</Text>
               <Text style={s.small}>
                 {credential?.stored
-                  ? `Stored on the server as ${credential.masked}`
-                  : credential?.fromEnvironment
-                    ? "Using OPENAI_API_KEY from the server environment"
-                    : "No key stored. The offline provider needs none."}
+                  ? t("voice.credential.stored", { masked: String(credential.masked ?? "") })
+                  : t(
+                      credential?.fromEnvironment
+                        ? "voice.credential.environment"
+                        : "voice.credential.missing",
+                    )}
               </Text>
               <Field
-                label="Replace key"
+                label={t("voice.replaceKey")}
                 value={secret}
                 onChangeText={setSecret}
                 secureTextEntry
@@ -227,7 +233,7 @@ export function VoiceSettings() {
 
               <View style={[s.row, { gap: 8, flexWrap: "wrap" }]}>
                 <Button small primary busy={busy === "save"} onPress={() => void saveModels()}>
-                  Save
+                  {t("voice.save")}
                 </Button>
                 <Button
                   small
@@ -235,10 +241,10 @@ export function VoiceSettings() {
                   busy={busy === "key"}
                   onPress={() => void saveKey()}
                 >
-                  Store key
+                  {t("voice.storeKey")}
                 </Button>
                 <Button small busy={busy === "test"} onPress={() => void test()}>
-                  Test providers
+                  {t("voice.test")}
                 </Button>
               </View>
               {note ? <Text style={[s.small, { color: colors.blueDark }]}>{note}</Text> : null}

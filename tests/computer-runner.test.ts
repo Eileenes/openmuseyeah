@@ -9,9 +9,14 @@ test("Docker subprocess uses literal argv, strips provider credentials, caps out
   const directory = await mkdtemp(join(tmpdir(), "openmuse-docker-runner-"));
   const previousPath = process.env.PATH;
   const previousKey = process.env.OPENMUSE_TEST_SECRET;
+  // A shell shim rather than a shebang on process.execPath: the kernel splits a
+  // shebang line on spaces, so an interpreter installed under a path with a space
+  // in it never starts, and this test then blames the Docker runner for it.
+  const fake = `const mode = process.argv[2];\nif (mode === "hang") setInterval(() => {}, 1000);\nelse if (mode === "output") { process.stdout.write("x".repeat(500000)); process.stderr.write("y".repeat(500000)); }\nelse if (mode === "fail") { process.stderr.write("failure"); process.exitCode = 17; }\nelse process.stdout.write(JSON.stringify({ args: process.argv.slice(2), secret: process.env.OPENMUSE_TEST_SECRET }));\n`;
+  await writeFile(join(directory, "docker.js"), fake, { mode: 0o600 });
   await writeFile(
     join(directory, "docker"),
-    `#!${process.execPath}\nconst mode = process.argv[2];\nif (mode === "hang") setInterval(() => {}, 1000);\nelse if (mode === "output") { process.stdout.write("x".repeat(500000)); process.stderr.write("y".repeat(500000)); }\nelse if (mode === "fail") { process.stderr.write("failure"); process.exitCode = 17; }\nelse process.stdout.write(JSON.stringify({ args: process.argv.slice(2), secret: process.env.OPENMUSE_TEST_SECRET }));\n`,
+    `#!/bin/sh\nexec '${process.execPath}' '${join(directory, "docker.js")}' "$@"\n`,
     { mode: 0o700 },
   );
   process.env.PATH = directory;

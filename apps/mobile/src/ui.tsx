@@ -14,7 +14,7 @@ import {
   type ViewStyle,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { markTint, VesperMark } from "./vesper-mark";
+import { type MarkVariant, VesperMark } from "./vesper-mark";
 export const colors = {
   canvas: "#FCFCFC",
   card: "#FFFFFF",
@@ -400,37 +400,13 @@ export function LinkRow({
   );
 }
 /** Vesper's mark, shared by every assistant surface. */
-export function Mascot({
-  size = 42,
-  variant = "sky",
-}: {
-  size?: number;
-  variant?: "sky" | "sand" | "lilac";
-}) {
-  // Slightly deeper than a hairline tint so the white head reads against it.
-  const palette = markTint(variant);
+export function Mascot({ size = 42, variant = "sky" }: { size?: number; variant?: MarkVariant }) {
+  // The plate used to be a separate tinted view behind the mark, which painted
+  // over a static child on web and needed an absolute wrapper to work around it.
+  // The mark now carries its own plate, so the wrapper is gone with it.
   return (
     <View accessibilityLabel="Vesper assistant mark" style={{ width: size, height: size }}>
-      <View
-        style={{
-          position: "absolute",
-          top: size * 0.08,
-          left: size * 0.08,
-          width: size * 0.84,
-          height: size * 0.84,
-          borderRadius: size,
-          backgroundColor: palette,
-        }}
-      />
-      {/*
-        The mark is absolutely positioned on purpose. On web the tint above is a
-        positioned element, and CSS paints positioned elements over in-flow
-        content, which would hide a static child completely. Two positioned
-        siblings paint in DOM order, so the mark lands on top.
-      */}
-      <View style={{ position: "absolute", top: 0, left: 0, width: size, height: size }}>
-        <VesperMark size={size} />
-      </View>
+      <VesperMark size={size} variant={variant} />
     </View>
   );
 }
