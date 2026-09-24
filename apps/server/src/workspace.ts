@@ -18,6 +18,7 @@ import type { Store } from "./db.ts";
 import { AppError } from "./errors.ts";
 import type { Files } from "./files.ts";
 import type { GoogleAuth } from "./google-auth.ts";
+import { resolveModel } from "./model-settings.ts";
 
 export class WorkspaceService {
   private seeding = new Map<string, Promise<void>>();
@@ -321,7 +322,7 @@ export class WorkspaceService {
       ],
       runtime: {
         provider: this.config.agentBackend === "sample" ? "sample" : "model",
-        configured: agentConfigured(this.config),
+        configured: agentConfigured(this.config, await resolveModel(this.db, this.config, owner)),
         openbotConfigured: false,
         richThreads: Boolean(this.config.intelligenceApiKey),
       },

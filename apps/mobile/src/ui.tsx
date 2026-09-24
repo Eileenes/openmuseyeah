@@ -14,16 +14,17 @@ import {
   type ViewStyle,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import Svg, { Defs, LinearGradient, Rect, Stop } from "react-native-svg";
 import { type MarkVariant, VesperMark } from "./vesper-mark";
 export const colors = {
-  canvas: "#FCFCFC",
-  card: "#FFFFFF",
+  canvas: "#FFFBF5",
+  card: "rgba(255,255,255,0.72)",
   text: "#11191C",
   muted: "#697176",
   line: "#EEEEF0",
-  blue: "#C8E7FF",
-  blueDark: "#1473C8",
-  sky: "#EDF7FD",
+  blue: "#FFD9C2",
+  blueDark: "#C4572A",
+  sky: "#FFF1E6",
   green: "#E3F3E8",
   lavender: "#F0EEFA",
   orange: "#FDF0DF",
@@ -187,6 +188,22 @@ export function IconButton({
     </Pressable>
   );
 }
+export function GradientBackground() {
+  return (
+    <View style={StyleSheet.absoluteFill} pointerEvents="none">
+      <Svg width="100%" height="100%">
+        <Defs>
+          <LinearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+            <Stop offset="0" stopColor="#FFE9E3" />
+            <Stop offset="0.5" stopColor="#FFF1E0" />
+            <Stop offset="1" stopColor="#FFFBF5" />
+          </LinearGradient>
+        </Defs>
+        <Rect width="100%" height="100%" fill="url(#bg)" />
+      </Svg>
+    </View>
+  );
+}
 export function Card({ children, style }: { children: ReactNode; style?: ViewStyle }) {
   return <View style={[s.card, style]}>{children}</View>;
 }
@@ -222,7 +239,7 @@ export function Empty({
 }: {
   icon: LucideIcon;
   title: string;
-  detail: string;
+  detail?: string;
   children?: ReactNode;
 }) {
   return (
@@ -231,7 +248,7 @@ export function Empty({
         <Icon size={24} color={colors.blueDark} />
       </View>
       <Text style={s.heading}>{title}</Text>
-      <Text style={[s.muted, { textAlign: "center", maxWidth: 360 }]}>{detail}</Text>
+      {!!detail && <Text style={[s.muted, { textAlign: "center", maxWidth: 360 }]}>{detail}</Text>}
       {children}
     </View>
   );

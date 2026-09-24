@@ -1,14 +1,5 @@
 import { useThreads } from "@copilotkit/react-native/headless";
-import {
-  Archive,
-  CalendarDays,
-  FileText,
-  MessageCircle,
-  Monitor,
-  Plus,
-  RefreshCw,
-  Settings2,
-} from "lucide-react-native";
+import { Archive, FileText, MessageCircle, Plus, RefreshCw, Settings2 } from "lucide-react-native";
 import { createContext, type ReactNode, useContext, useEffect, useRef, useState } from "react";
 import { ActivityIndicator, Pressable, Text, View } from "react-native";
 import { useTranslation } from "./i18n";
@@ -277,45 +268,26 @@ export function ThreadsSheet({ onClose }: { onClose: () => void }) {
                 {t("thread.loadMore")}
               </Button>
             )}
-            <Text style={s.small}>{t("thread.note")}</Text>
           </>
         ) : (
-          <>
-            <LinkRow
-              icon={MessageCircle}
-              title={t("thread.mainChat")}
-              detail={t("thread.mainChat.saved")}
-              onPress={() => {
-                navigate("chat");
-                onClose();
-              }}
-            />
-            <Text style={s.muted}>{t("thread.savedNote")}</Text>
-          </>
+          <LinkRow
+            icon={MessageCircle}
+            title={t("thread.mainChat")}
+            detail={t("thread.mainChat.saved")}
+            onPress={() => {
+              navigate("chat");
+              onClose();
+            }}
+          />
         )}
         <View style={s.divider} />
         <LinkRow
           icon={Plus}
           title={t("thread.delegate")}
-          detail={t("thread.delegate.detail")}
           onPress={() => {
             onClose();
             open({ type: "delegate" });
           }}
-        />
-        <LinkRow
-          icon={Monitor}
-          title={t("common.agentComputer")}
-          detail={t("thread.computer.detail")}
-          onPress={() => {
-            onClose();
-            open({ type: "computer" });
-          }}
-        />
-        <LinkRow
-          icon={CalendarDays}
-          title={t("screen.calendar.title")}
-          onPress={() => go("calendar")}
         />
         <LinkRow icon={FileText} title={t("screen.files.title")} onPress={() => go("files")} />
         <LinkRow icon={Settings2} title={t("thread.apps")} onPress={() => go("apps")} />

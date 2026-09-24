@@ -1,9 +1,7 @@
-import { createHash, randomBytes, randomUUID } from "node:crypto";
-import { mkdir, readFile, writeFile } from "node:fs/promises";
-import { join } from "node:path";
-import { decryptSecret, encryptSecret } from "../../../packages/integrations/src/vault.ts";
+import { createHash, randomUUID } from "node:crypto";
 import {
   defaultModelSettings,
+  llmProviderSchema,
   type ModelSettings,
   type ModelSettingsInput,
   maskSecret,
@@ -23,11 +21,11 @@ import {
 } from "../../../packages/voice/src/index.ts";
 import { bufferedStreaming, type StreamingSession } from "../../../packages/voice/src/streaming.ts";
 import type { Config } from "./config.ts";
+import { CredentialStore } from "./credentials.ts";
 import type { Store } from "./db.ts";
 import { AppError } from "./errors.ts";
 import { MODEL_SETTINGS_ID, MODEL_SETTINGS_KIND } from "./model-settings.ts";
 
-const CREDENTIAL_KIND = "model-credentials";
 /** Replays of the same sentence must not be billed twice. */
 const CACHE_LIMIT = 64;
 /** Synthesized audio is handed to players through a short-lived signed URL. */
@@ -37,11 +35,6 @@ const AUDIO_LIMIT = 32;
 const STREAM_TTL_MS = 2 * 60 * 1000;
 const STREAM_LIMIT = 8;
 const STREAM_MAX_BYTES = 4 * 1024 * 1024;
-
-interface CredentialRecord {
-  id: string;
-  encrypted: string;
-}
 
 export interface PublicModelSettings {
   settings: ModelSettings;
@@ -61,35 +54,15 @@ export class VoiceService {
     string,
     { owner: string; session: StreamingSession; expiresAt: number }
   >();
-  private encryptionKeyPromise?: Promise<string>;
+  private readonly keys: CredentialStore;
 
   constructor(
     private readonly db: Store,
-    private readonly config: Config,
+    config: Config,
     /** Injected in tests, mirroring the DockerRunner seam used by the computer. */
     private readonly options: { fetchImpl?: typeof fetch } = {},
-  ) {}
-
-  /**
-   * Live deployments require TOKEN_ENCRYPTION_KEY. Sample mode is local-only and
-   * may run without one, so mirror the session signing key: generate a private
-   * key inside the data directory on first use.
-   */
-  private encryptionKey(): Promise<string> {
-    if (this.config.encryptionKey) return Promise.resolve(this.config.encryptionKey);
-    this.encryptionKeyPromise ??= (async () => {
-      await mkdir(this.config.dataDir, { recursive: true, mode: 0o700 });
-      const path = join(this.config.dataDir, "credential-key");
-      try {
-        return await readFile(path, "utf8");
-      } catch (error) {
-        if (!(error instanceof Error && "code" in error && error.code === "ENOENT")) throw error;
-        const key = randomBytes(32).toString("base64");
-        await writeFile(path, key, { mode: 0o600, flag: "wx" });
-        return key;
-      }
-    })();
-    return this.encryptionKeyPromise;
+  ) {
+    this.keys = new CredentialStore(db, config);
   }
 
   async settings(owner: string): Promise<ModelSettings> {
@@ -128,51 +101,37 @@ export class VoiceService {
       if (!patch.tts.model) next.tts.model = PROVIDER_DEFAULTS[patch.tts.provider].ttsModel;
       if (!patch.tts.voiceId) next.tts.voiceId = PROVIDER_DEFAULTS[patch.tts.provider].voiceId;
     }
-    if (patch.keys) {
-      const key = await this.encryptionKey();
-      for (const [provider, secret] of Object.entries(patch.keys))
-        await this.db.put<CredentialRecord>(owner, CREDENTIAL_KIND, {
-          id: provider,
-          encrypted: encryptSecret(secret, key),
-        });
-    }
+    if (next.llm.provider === "custom" && next.llm.model.trim() && !next.llm.baseUrl?.trim())
+      throw new AppError("A custom provider needs a Base URL.", 400);
+    if (patch.keys) await this.keys.save(owner, patch.keys);
     return this.db.put(owner, MODEL_SETTINGS_KIND, next);
   }
 
   private async credentials(owner: string): Promise<Record<string, string>> {
-    const rows = await this.db.list<CredentialRecord>(owner, CREDENTIAL_KIND);
-    const found: Record<string, string> = {};
-    // Only touch the keystore when something is actually stored, so a workspace
-    // that never saved a key performs no filesystem work at all.
-    if (rows.length > 0) {
-      const key = await this.encryptionKey();
-      for (const row of rows) {
-        try {
-          found[row.id] = decryptSecret(row.encrypted, key);
-        } catch {
-          // A credential written under a different key is unusable; treat it as absent.
-        }
-      }
-    }
-    // A key stored through the app wins; the environment stays as a fallback.
-    if (!found.openai && process.env.OPENAI_API_KEY) found.openai = process.env.OPENAI_API_KEY;
-    return found;
+    const found = await this.keys.resolve(owner);
+    return Object.fromEntries(Object.entries(found).map(([id, { secret }]) => [id, secret]));
   }
 
   async publicSettings(owner: string): Promise<PublicModelSettings> {
     const [settings, credentials] = await Promise.all([
       this.settings(owner),
-      this.credentials(owner),
+      this.keys.resolve(owner),
     ]);
     return {
       settings,
-      credentials: {
-        openai: {
-          stored: Boolean(credentials.openai),
-          masked: credentials.openai ? maskSecret(credentials.openai) : undefined,
-          fromEnvironment: Boolean(!credentials.openai && process.env.OPENAI_API_KEY),
-        },
-      },
+      credentials: Object.fromEntries(
+        llmProviderSchema.options.map((provider) => {
+          const found = credentials[provider];
+          return [
+            provider,
+            {
+              stored: Boolean(found && !found.fromEnvironment),
+              masked: found && !found.fromEnvironment ? maskSecret(found.secret) : undefined,
+              fromEnvironment: Boolean(found?.fromEnvironment),
+            },
+          ];
+        }),
+      ),
       speechProviders: ["stub", "openai"],
       voices:
         settings.tts.provider === "openai" ? [...OPENAI_VOICES] : [PROVIDER_DEFAULTS.stub.voiceId],
@@ -188,7 +147,9 @@ export class VoiceService {
       );
     return {
       apiKey,
-      baseUrl: settings.llm.baseUrl ?? process.env.OPENAI_BASE_URL,
+      baseUrl:
+        (settings.llm.provider === "openai" && settings.llm.baseUrl?.trim()) ||
+        process.env.OPENAI_BASE_URL,
       fetchImpl: this.options.fetchImpl,
     };
   }

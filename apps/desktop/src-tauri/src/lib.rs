@@ -7,7 +7,8 @@
  * that API ended up on.
  */
 
-use std::path::PathBuf;
+use std::io::Read;
+use std::path::{Path, PathBuf};
 use std::process::{Child, Command};
 use std::sync::Mutex;
 use tauri::{Manager, RunEvent, WebviewUrl, WebviewWindowBuilder};
@@ -34,6 +35,53 @@ struct Started {
     child: Option<Child>,
     url: String,
     token: String,
+    access_key: String,
+}
+
+fn random_bytes(len: usize) -> std::io::Result<Vec<u8>> {
+    let mut bytes = vec![0u8; len];
+    std::fs::File::open("/dev/urandom")?.read_exact(&mut bytes)?;
+    Ok(bytes)
+}
+
+fn hex(bytes: &[u8]) -> String {
+    bytes.iter().map(|b| format!("{b:02x}")).collect()
+}
+
+fn base64(bytes: &[u8]) -> String {
+    const TABLE: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+    let mut out = String::new();
+    for chunk in bytes.chunks(3) {
+        let n = chunk.iter().enumerate().fold(0u32, |n, (i, b)| n | (*b as u32) << (16 - 8 * i));
+        for i in 0..4 {
+            out.push(if i <= chunk.len() {
+                TABLE[(n >> (18 - 6 * i) & 63) as usize] as char
+            } else {
+                '='
+            });
+        }
+    }
+    out
+}
+
+/**
+ * The key that encrypts provider API keys at rest. Created once and kept: a new
+ * key on every launch would make every stored key unreadable.
+ */
+fn encryption_key(data: &Path) -> std::io::Result<String> {
+    let path = data.join("encryption-key");
+    if let Ok(existing) = std::fs::read_to_string(&path) {
+        if !existing.trim().is_empty() {
+            return Ok(existing.trim().to_string());
+        }
+    }
+    let key = base64(&random_bytes(32)?);
+    let mut options = std::fs::OpenOptions::new();
+    options.write(true).create_new(true);
+    #[cfg(unix)]
+    std::os::unix::fs::OpenOptionsExt::mode(&mut options, 0o600);
+    std::io::Write::write_all(&mut options.open(&path)?, key.as_bytes())?;
+    Ok(key)
 }
 
 /**
@@ -51,43 +99,44 @@ fn start(app: &tauri::AppHandle, port: u16) -> Started {
      * token — otherwise any sandboxed page on the web could reach the loopback
      * server that is meant for this app alone.
      */
-    let token = format!(
-        "{:x}{:x}",
-        std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .map(|d| d.as_nanos())
-            .unwrap_or(0),
-        std::process::id()
-    );
+    let (token, access_key) = match (random_bytes(24), random_bytes(24)) {
+        (Ok(token), Ok(access)) => (hex(&token), hex(&access)),
+        _ => {
+            eprintln!("vesper: no system randomness");
+            return Started { child: None, url, token: String::new(), access_key: String::new() };
+        }
+    };
     if let Ok(command) = std::env::var("VESPER_SIDECAR_COMMAND") {
         if !command.trim().is_empty() {
             println!("vesper: starting the local API from VESPER_SIDECAR_COMMAND");
             let child = Command::new("/bin/sh").arg("-c").arg(command).spawn().ok();
-            return Started { child, url, token };
+            return Started { child, url, token, access_key };
         }
     }
 
     let Some(dir) = sidecar_dir(app) else {
         eprintln!("vesper: no resource directory");
-        return Started { child: None, url, token };
+        return Started { child: None, url, token, access_key };
     };
     let node = dir.join("node");
     let entry = dir.join("server.js");
     if !node.exists() || !entry.exists() {
         eprintln!("vesper: no bundled API at {}", dir.display());
-        return Started { child: None, url, token };
+        return Started { child: None, url, token, access_key };
     }
 
     // Where the embedded database lives. Overridable so a deployment can place
     // it beside other data, and so the launch path can be exercised where the
     // platform default directory is not writable.
+    // A subdirectory, so data from the earlier sample-only builds never appears
+    // in the real workspace.
     let data = match std::env::var("VESPER_DATA_DIR") {
         Ok(dir) if !dir.trim().is_empty() => PathBuf::from(dir),
         _ => match app.path().app_local_data_dir() {
-            Ok(dir) => dir,
+            Ok(dir) => dir.join("workspace"),
             Err(error) => {
                 eprintln!("vesper: no data directory: {error}");
-                return Started { child: None, url, token };
+                return Started { child: None, url, token, access_key };
             }
         },
     };
@@ -96,9 +145,21 @@ fn start(app: &tauri::AppHandle, port: u16) -> Started {
             "vesper: could not create the data directory {}: {error}",
             data.display()
         );
-        return Started { child: None, url, token };
+        return Started { child: None, url, token, access_key };
     }
+    let encryption = match encryption_key(&data) {
+        Ok(key) => key,
+        Err(error) => {
+            eprintln!("vesper: could not prepare the encryption key: {error}");
+            return Started { child: None, url, token, access_key };
+        }
+    };
 
+    /*
+     * A real workspace with no model preset: chat stays unconfigured until a
+     * provider and key are saved in Settings. Server environment keys are
+     * cleared so nothing inherited from a shell silently takes over.
+     */
     let child = match Command::new(&node)
         .arg(&entry)
         // PGlite resolves pglite.wasm and pglite.data from the working
@@ -109,8 +170,15 @@ fn start(app: &tauri::AppHandle, port: u16) -> Started {
         .env("PUBLIC_API_URL", &url)
         .env("VESPER_SHELL_TOKEN", &token)
         .env("DATA_DIR", &data)
-        .env("WORKSPACE_MODE", "sample")
-        .env("AGENT_BACKEND", "sample")
+        .env("WORKSPACE_MODE", "live")
+        .env("AGENT_BACKEND", "model")
+        .env("OPENMUSE_ACCESS_KEY", &access_key)
+        .env("TOKEN_ENCRYPTION_KEY", &encryption)
+        .env_remove("MODEL")
+        .env_remove("OPENAI_API_KEY")
+        .env_remove("ANTHROPIC_API_KEY")
+        .env_remove("GOOGLE_API_KEY")
+        .env_remove("CPK_INTELLIGENCE_API_KEY")
         .spawn()
     {
         Ok(child) => {
@@ -122,7 +190,7 @@ fn start(app: &tauri::AppHandle, port: u16) -> Started {
             None
         }
     };
-    Started { child, url, token }
+    Started { child, url, token, access_key }
 }
 
 fn sidecar_dir(app: &tauri::AppHandle) -> Option<PathBuf> {
@@ -169,10 +237,12 @@ pub fn run() {
              * a failure to observe the interface reach the API. It changed
              * nothing, so the injection was not the cause and was restored.
              */
+            let json = |value: &str| serde_json::to_string(value).unwrap_or_else(|_| "null".into());
             let mut script = format!(
-                "window.__VESPER_API_URL__ = {}; window.__VESPER_SHELL_TOKEN__ = {};",
-                serde_json::to_string(&started.url).unwrap_or_else(|_| "null".into()),
-                serde_json::to_string(&started.token).unwrap_or_else(|_| "null".into())
+                "window.__VESPER_API_URL__ = {}; window.__VESPER_SHELL_TOKEN__ = {}; window.__VESPER_ACCESS_KEY__ = {};",
+                json(&started.url),
+                json(&started.token),
+                json(&started.access_key)
             );
             /*
              * Diagnostic: proves whether scripts run inside the webview and can

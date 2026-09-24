@@ -2,7 +2,7 @@ import { z } from "zod";
 
 /** Editable model configuration. Stored per owner; secrets are kept separately
  * and encrypted, and never returned to a client. */
-export const llmProviderSchema = z.enum(["openai", "anthropic", "google"]);
+export const llmProviderSchema = z.enum(["openai", "anthropic", "google", "custom"]);
 export const speechProviderSchema = z.enum(["stub", "openai"]);
 export const audioFormatSchema = z.enum(["mp3", "opus", "wav"]);
 export type SpeechProvider = z.infer<typeof speechProviderSchema>;

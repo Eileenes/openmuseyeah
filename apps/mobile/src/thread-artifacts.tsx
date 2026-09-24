@@ -1,10 +1,9 @@
 import { ChevronRight, FileText } from "lucide-react-native";
 import { useEffect, useState } from "react";
 import { Pressable, Text, View } from "react-native";
-import type { Artifact, BrowserSession } from "../../../packages/domain/src";
+import type { Artifact } from "../../../packages/domain/src";
 import type { AgentArtifact, AgentTask } from "../../../packages/domain/src/agent";
 import { ArtifactCard, TaskCard } from "./agent-ui";
-import { BrowserThreadCard } from "./computer";
 import { Button, Card, colors, ErrorNotice, s } from "./ui";
 import { useWorkspace } from "./workspace";
 
@@ -65,16 +64,13 @@ export function TaskThreadCard({ task }: { task: AgentTask }) {
   const [detail, setDetail] = useState<{
     artifacts: AgentArtifact[];
     files: Artifact[];
-    browsers: BrowserSession[];
   }>();
   const [error, setError] = useState("");
   const [attempt, setAttempt] = useState(0);
   useEffect(() => {
     let active = true;
     void api
-      .request<{ artifacts: AgentArtifact[]; files: Artifact[]; browsers: BrowserSession[] }>(
-        `/api/agent/tasks/${task.id}`,
-      )
+      .request<{ artifacts: AgentArtifact[]; files: Artifact[] }>(`/api/agent/tasks/${task.id}`)
       .then((result) => {
         if (active) {
           setDetail(result);
@@ -91,9 +87,6 @@ export function TaskThreadCard({ task }: { task: AgentTask }) {
   return (
     <View style={{ gap: 12 }}>
       <TaskCard task={task} compact />
-      {detail?.browsers.map((browser) => (
-        <BrowserThreadCard key={browser.id} browser={browser} />
-      ))}
       {[...(detail?.files || [])]
         .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
         .slice(0, 1)

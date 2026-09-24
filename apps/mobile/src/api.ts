@@ -1,5 +1,5 @@
 import type { ModelSettings, ModelSettingsInput } from "../../../packages/voice/src/settings";
-import { apiBaseUrl, shellToken } from "./server-address";
+import { apiBaseUrl, shellAccessKey, shellToken } from "./server-address";
 import type { Recording } from "./voice/types";
 
 export { apiBaseUrl, DEFAULT_API_URL, setApiBaseUrl } from "./server-address";
@@ -12,6 +12,7 @@ export interface ModelSettingsView {
 }
 
 export interface ModelTestResult {
+  reasoning: { ok: boolean; provider?: string; model?: string; error?: string };
   speechToText: { ok: boolean; provider?: string; model?: string; text?: string; error?: string };
   textToSpeech: { ok: boolean; provider?: string; bytes?: number; error?: string };
 }
@@ -115,7 +116,7 @@ export async function createSession(
       // window's origin is opaque and is only accepted together with it.
       ...(shellToken() ? { "X-Vesper-Shell": shellToken() as string } : {}),
     },
-    body: JSON.stringify({ accessKey }),
+    body: JSON.stringify({ accessKey: accessKey ?? shellAccessKey() ?? undefined }),
   });
   const payload = await response.json();
   if (!response.ok) throw new Error(payload.error || "Could not open your workspace.");

@@ -43,7 +43,16 @@ export function apiBaseUrl(): string {
  * packaged window sends an opaque origin, so the API accepts it only with this.
  */
 export function shellToken(): string | null {
-  const value = (globalThis as Record<string, unknown>).__VESPER_SHELL_TOKEN__;
+  return injected("__VESPER_SHELL_TOKEN__");
+}
+
+/** The desktop shell opens its own workspace, so it hands the window the key. */
+export function shellAccessKey(): string | null {
+  return injected("__VESPER_ACCESS_KEY__");
+}
+
+function injected(name: string): string | null {
+  const value = (globalThis as Record<string, unknown>)[name];
   return typeof value === "string" && value ? value : null;
 }
 

@@ -20,6 +20,7 @@ import { AgentService } from "./engine/service.ts";
 import { AppError } from "./errors.ts";
 import { Files } from "./files.ts";
 import { GoogleAuth } from "./google-auth.ts";
+import { probeModel, resolveModel } from "./model-settings.ts";
 import { VoiceService } from "./voice.ts";
 import { WorkspaceService } from "./workspace.ts";
 
@@ -124,7 +125,7 @@ export async function createApp(
     c.json({
       ok: true,
       mode: config.mode,
-      agentConfigured: agentConfigured(config),
+      agentConfigured: config.agentBackend !== "model" ? agentConfigured(config) : undefined,
       browserConfigured: Boolean(config.workerUrl && config.workerToken),
     }),
   );
@@ -184,13 +185,21 @@ export async function createApp(
   // is proven to work instead of merely stored.
   app.post("/api/settings/models/test", async (c) => {
     const owner = c.get("owner");
-    const [speech, speechSynthesis] = await Promise.allSettled([
+    const [reasoning, speech, speechSynthesis] = await Promise.allSettled([
+      resolveModel(db, config, owner).then((model) => {
+        if (!model) throw new AppError("Choose a model and store its API key first.", 400);
+        return probeModel(model);
+      }),
       voice.transcribe(owner, { audio: silenceWav(0.4), mimeType: "audio/wav" }),
       voice.synthesize(owner, { text: "Vesper voice check." }),
     ]);
     const detail = (reason: unknown) =>
       reason instanceof Error ? reason.message : "The provider could not be reached";
     return c.json({
+      reasoning:
+        reasoning.status === "fulfilled"
+          ? { ok: true, ...reasoning.value }
+          : { ok: false, error: detail(reasoning.reason) },
       speechToText:
         speech.status === "fulfilled"
           ? {
@@ -460,11 +469,10 @@ export async function createApp(
     return c.json({ ok: true });
   });
   app.all("/api/copilotkit/*", async (c) => {
-    if (!agentConfigured(config))
-      throw new AppError(
-        "Configure a model and provider API key, or a valid AG-UI endpoint, to start chat",
-        503,
-      );
+    // The model backend answers an unconfigured owner in the chat itself, so
+    // only a missing AG-UI endpoint is refused here.
+    if (config.agentBackend === "agui" && !agentConfigured(config))
+      throw new AppError("Configure a valid AG-UI endpoint to start chat", 503);
     const response = await runtime.fetch(c.req.raw);
     // Runtime 1.70 emits SSE strings; a WHATWG Response body requires byte chunks.
     const encoder = new TextEncoder();

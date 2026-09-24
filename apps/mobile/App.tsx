@@ -3,12 +3,11 @@ import { StatusBar } from "expo-status-bar";
 import {
   Bell,
   Check,
-  Lightbulb,
   type LucideIcon,
   Menu,
   MessageCircle,
   PanelsTopLeft,
-  Shapes,
+  Settings2,
   SquareCheck,
   X,
 } from "lucide-react-native";
@@ -24,48 +23,38 @@ import {
 } from "react-native";
 import { SafeAreaProvider, SafeAreaView } from "react-native-safe-area-context";
 import type { Section, Workspace } from "../../packages/domain/src";
-import {
-  AgentActivityScreen,
-  AgentStatus,
-  AppsScreen,
-  GoalsScreen,
-  IdeasScreen,
-} from "./src/agent-ui";
+import { AgentActivityScreen, AgentStatus, AppsScreen, GoalsScreen } from "./src/agent-ui";
 import { AgentWorkspaceProvider, useAgentWorkspace } from "./src/agent-workspace";
 import { apiBaseUrl, createSession, MuseApi } from "./src/api";
 import { ChatScreen, WorkspaceTools } from "./src/chat";
-import { ComputerEntry } from "./src/computer";
-import { ComputerDraftProvider } from "./src/computer-drafts";
 import { Details } from "./src/details";
 import { LanguageProvider, useTranslation } from "./src/i18n";
-import { BrowserScreen, CalendarScreen, FilesScreen, MailScreen } from "./src/screens";
+import { FilesScreen } from "./src/screens";
 import { ThreadsProvider, ThreadsSheet, useMuseThread } from "./src/threads";
-import { Button, Card, colors, ErrorNotice, Field, IconButton, Mascot, s } from "./src/ui";
+import {
+  Button,
+  Card,
+  colors,
+  ErrorNotice,
+  Field,
+  GradientBackground,
+  IconButton,
+  Mascot,
+  s,
+} from "./src/ui";
 import { type Detail, useWorkspace, WorkspaceContext } from "./src/workspace";
 
 const nav: { id: Section; label: string; icon: LucideIcon }[] = [
   { id: "chat", label: "Chat", icon: MessageCircle },
   { id: "activity", label: "Activity", icon: PanelsTopLeft },
-  { id: "ideas", label: "Ideas", icon: Lightbulb },
   { id: "goals", label: "Goals", icon: SquareCheck },
-  { id: "apps", label: "Apps", icon: Shapes },
+  { id: "apps", label: "Settings", icon: Settings2 },
 ];
 const titles: Partial<Record<Section, { title: string; subtitle: string }>> = {
-  activity: { title: "Activity", subtitle: "Plans, progress, decisions and results." },
-  ideas: { title: "Ideas", subtitle: "Useful next steps, grounded in your world." },
-  goals: {
-    title: "Goals",
-    subtitle: "Longer-term goals and things to keep an eye on.",
-  },
-  apps: {
-    title: "Apps",
-    subtitle: "Connections, capabilities and what your agent remembers.",
-  },
-  connections: { title: "Apps", subtitle: "Connections and capabilities." },
-  mail: { title: "Mail", subtitle: "The conversations behind your work." },
-  calendar: { title: "Calendar", subtitle: "Time for what matters." },
-  browser: { title: "Browser", subtitle: "Your connected browsing sessions." },
-  files: { title: "Files", subtitle: "Documents, forms and filled copies." },
+  activity: { title: "Tasks", subtitle: "" },
+  goals: { title: "Goals", subtitle: "" },
+  apps: { title: "Settings", subtitle: "" },
+  files: { title: "Files", subtitle: "" },
 };
 export default function App() {
   const [token, setToken] = useState("");
@@ -107,6 +96,7 @@ export default function App() {
   return (
     <LanguageProvider>
       <SafeAreaProvider>
+        <GradientBackground />
         <StatusBar style="dark" />
         {token ? (
           <CopilotKitProvider
@@ -119,7 +109,7 @@ export default function App() {
           <SafeAreaView
             style={{
               flex: 1,
-              backgroundColor: colors.canvas,
+              backgroundColor: "transparent",
               justifyContent: "center",
               alignItems: "center",
               padding: 24,
@@ -204,7 +194,7 @@ function WorkspaceApp({ token }: { token: string }) {
       <SafeAreaView
         style={{
           flex: 1,
-          backgroundColor: colors.canvas,
+          backgroundColor: "transparent",
           alignItems: "center",
           justifyContent: "center",
           padding: 24,
@@ -232,17 +222,15 @@ function WorkspaceApp({ token }: { token: string }) {
       value={{ workspace, api, section, navigate, refresh, open, close, notify: setToast, ask }}
     >
       <AgentWorkspaceProvider>
-        <ComputerDraftProvider key={token}>
-          <ThreadsProvider>
-            <WorkspaceShell
-              detail={detail}
-              toast={toast}
-              clearToast={() => setToast("")}
-              error={error}
-              prompt={prompt}
-            />
-          </ThreadsProvider>
-        </ComputerDraftProvider>
+        <ThreadsProvider>
+          <WorkspaceShell
+            detail={detail}
+            toast={toast}
+            clearToast={() => setToast("")}
+            error={error}
+            prompt={prompt}
+          />
+        </ThreadsProvider>
       </AgentWorkspaceProvider>
     </WorkspaceContext.Provider>
   );
@@ -290,7 +278,7 @@ function WorkspaceShell({
         : activeTask.plan.find((step) => step.status === "running")?.title || activeTask.title
     : data?.tasks.some((task) => task.status === "queued")
       ? "Picking up your next task…"
-      : "Here when you need me";
+      : "";
   const { t } = useTranslation();
   // The English text stays the fallback, so a section without a translation
   // still shows something sensible instead of a key.
@@ -300,30 +288,22 @@ function WorkspaceShell({
     subtitle: t(`screen.${section}.subtitle`, undefined, base.subtitle),
   };
   const Screen =
-    section === "mail"
-      ? MailScreen
-      : section === "calendar"
-        ? CalendarScreen
-        : section === "browser"
-          ? BrowserScreen
-          : section === "files"
-            ? FilesScreen
-            : section === "activity"
-              ? AgentActivityScreen
-              : section === "ideas"
-                ? IdeasScreen
-                : section === "goals"
-                  ? GoalsScreen
-                  : AppsScreen;
-  const utility = ["mail", "calendar", "browser", "files"].includes(section);
+    section === "files"
+      ? FilesScreen
+      : section === "activity"
+        ? AgentActivityScreen
+        : section === "goals"
+          ? GoalsScreen
+          : AppsScreen;
+  const utility = section === "files";
   return (
     <>
       <WorkspaceTools />
-      <SafeAreaView style={{ flex: 1, backgroundColor: colors.canvas }} edges={["top", "bottom"]}>
+      <SafeAreaView style={{ flex: 1, backgroundColor: "transparent" }} edges={["top", "bottom"]}>
         <View style={{ flex: 1, width: "100%", maxWidth: 760, alignSelf: "center" }}>
           <View
             style={{
-              height: desktop ? 146 : 122,
+              height: desktop ? 128 : 108,
               paddingTop: desktop ? 14 : 2,
               marginHorizontal: 20,
             }}
@@ -357,14 +337,15 @@ function WorkspaceShell({
                 >
                   {agentName}
                 </Text>
-                <Text
-                  numberOfLines={1}
-                  style={{ fontSize: 11, color: colors.muted, marginBottom: 6 }}
-                >
-                  {status}
-                </Text>
+                {!!status && (
+                  <Text
+                    numberOfLines={1}
+                    style={{ fontSize: 11, color: colors.muted, marginBottom: 6 }}
+                  >
+                    {status}
+                  </Text>
+                )}
               </Pressable>
-              {section === "chat" && <ComputerEntry />}
             </View>
             <View style={{ position: "absolute", right: 0, top: 16 }}>
               <IconButton
@@ -402,7 +383,7 @@ function WorkspaceShell({
                     style={{ alignSelf: "flex-start", marginBottom: 18 }}
                     onPress={() => navigate("apps")}
                   >
-                    Back to Apps
+                    {t("common.back")}
                   </Button>
                 )}
                 <Text style={[s.title, { fontSize: 25, marginBottom: 22 }]}>{title?.title}</Text>
@@ -463,7 +444,7 @@ function WorkspaceShell({
                 width: "100%",
                 maxWidth: 370,
                 padding: 5,
-                backgroundColor: "#FFF",
+                backgroundColor: colors.card,
                 borderRadius: 40,
                 shadowColor: "#132631",
                 shadowOffset: { width: 0, height: 2 },
@@ -471,7 +452,7 @@ function WorkspaceShell({
                 shadowRadius: 18,
                 elevation: 3,
                 borderWidth: 1,
-                borderColor: "#F8F8F8",
+                borderColor: "rgba(255,255,255,0.6)",
               }}
             >
               {nav.map((item) => {
@@ -488,7 +469,7 @@ function WorkspaceShell({
                       height: 47,
                       alignItems: "center",
                       justifyContent: "center",
-                      backgroundColor: active ? "#F0F1F2" : "transparent",
+                      backgroundColor: active ? colors.blue : "transparent",
                       borderRadius: 28,
                     }}
                   >
@@ -536,17 +517,7 @@ function WorkspaceShell({
                 ? detail.taskId
                 : detail.type === "file"
                   ? detail.file.id
-                  : detail.type === "browser"
-                    ? detail.browser.id
-                    : detail.type === "mail"
-                      ? detail.mail.id
-                      : detail.type === "review"
-                        ? detail.action.id
-                        : detail.type === "email"
-                          ? JSON.stringify(detail.draft)
-                          : detail.type === "event"
-                            ? detail.event?.id || "event-new"
-                            : detail.type
+                  : detail.type
             }
             detail={detail}
           />

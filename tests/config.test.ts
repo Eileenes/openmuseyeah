@@ -45,6 +45,12 @@ test("live API configuration accepts a non-empty Intelligence key", () => {
   assert.doesNotThrow(() => assertApiDeploymentConfig(liveConfig("test-project-key-never-sent")));
 });
 
+test("the desktop app's live workspace runs without an Intelligence key", () => {
+  assert.doesNotThrow(() =>
+    assertApiDeploymentConfig({ ...liveConfig(), shellToken: "per-launch-shell-token" }),
+  );
+});
+
 test("sample API configuration remains key-free", () => {
   assert.doesNotThrow(() => assertApiDeploymentConfig(sampleConfig));
 });

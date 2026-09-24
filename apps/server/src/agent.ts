@@ -5,6 +5,7 @@ import {
   type CopilotKitIntelligence,
   CopilotRuntime,
   createCopilotHonoHandler,
+  type ModelSpecifier,
 } from "@copilotkit/runtime/v2";
 import type { Auth } from "./auth.ts";
 import type { Config } from "./config.ts";
@@ -12,18 +13,10 @@ import { ConversationAgent } from "./engine/conversation.ts";
 import type { AgentService } from "./engine/service.ts";
 import { resolveModel } from "./model-settings.ts";
 
-export function agentConfigured(config: Config) {
-  return (
-    config.agentBackend === "sample" ||
-    (config.agentBackend === "agui"
-      ? Boolean(config.agentUrl)
-      : Boolean(
-          config.model &&
-            (process.env.OPENAI_API_KEY ||
-              process.env.ANTHROPIC_API_KEY ||
-              process.env.GOOGLE_API_KEY),
-        ))
-  );
+/** `model` is the owner's resolved model; it only matters for the model backend. */
+export function agentConfigured(config: Config, model?: ModelSpecifier) {
+  if (config.agentBackend === "sample") return true;
+  return config.agentBackend === "agui" ? Boolean(config.agentUrl) : Boolean(model);
 }
 export function makeRuntime(
   config: Config,

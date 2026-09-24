@@ -63,8 +63,12 @@ const missingIntelligenceKeyMessage =
   "then set the generated server-only key. " +
   "See https://docs.copilotkit.ai/intelligence/connect-your-runtime";
 
+/**
+ * The desktop app is its own single-device deployment: without Intelligence it
+ * keeps the conversation in its local database, so the key is not required.
+ */
 export function assertApiDeploymentConfig(config: Config): void {
-  if (config.mode === "live" && !config.intelligenceApiKey?.trim()) {
+  if (config.mode === "live" && !config.shellToken && !config.intelligenceApiKey?.trim()) {
     throw new Error(missingIntelligenceKeyMessage);
   }
 }
@@ -116,4 +120,13 @@ export function readConfig(): Config {
   if (mode === "sample" && !["127.0.0.1", "localhost", "::1"].includes(config.host))
     throw new Error("Sample workspace is local-only. HOST must be a loopback address.");
   return config;
+}
+
+/** Tool groups whose backing service is configured; the model never sees the rest. */
+export function availableCapabilities(config: Config) {
+  return {
+    mail: config.mode === "sample" || Boolean(config.googleClientId && config.googleClientSecret),
+    browser: Boolean(config.workerUrl && config.workerToken),
+    computer: Boolean(config.computerEnabled),
+  };
 }
